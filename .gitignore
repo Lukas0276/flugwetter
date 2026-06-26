@@ -1,0 +1,5 @@
+# Nur die Web-App veröffentlichen – Mac-Starter & lokale Tools bleiben lokal
+Flugwetter.app/
+Flugwetter starten.command
+.claude/
+.DS_Store

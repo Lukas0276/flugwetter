@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Thermik · Paragliding-Check für jeden Ort</title>
+<meta name="description" content="Gib einen Ort ein und finde heraus, ob du dort gleitschirmfliegen kannst – Startplätze, Wind, Thermik, Föhn, Webcams." />
+<meta name="theme-color" content="#0b1120" />
+<!-- Open Graph / WhatsApp-Linkvorschau -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Kann ich hier fliegen? · Flugwetter-Check" />
+<meta property="og:description" content="Ort eingeben → Startplätze, Wind, Thermik, Föhn & Webcams sofort sehen. Gleitschirm-Flugwetter auf einen Blick." />
+<meta property="og:image" content="https://lukas0276.github.io/flugwetter/og-image.png" />
+<meta property="og:url" content="https://lukas0276.github.io/flugwetter/" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="apple-touch-icon" href="https://lukas0276.github.io/flugwetter/og-image.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+  :root{
+    --bg:#060912;
+    --bg2:#0b1120;
+    --card:rgba(20,28,46,0.55);
+    --card-solid:#121a2e;
+    --stroke:rgba(148,163,184,0.16);
+    --stroke-strong:rgba(148,163,184,0.30);
+    --text:#eaf0fb;
+    --muted:#95a3bd;
+    --muted2:#64748b;
+    --sky:#38bdf8;
+    --teal:#2dd4bf;
+    --violet:#a78bfa;
+    --indigo:#6366f1;
+    --good:#34d399;
+    --mid:#fbbf24;
+    --bad:#fb7185;
+    --unknown:#94a3b8;
+    --shadow:0 18px 50px -12px rgba(0,0,0,0.65);
+    --radius:20px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:'Inter',system-ui,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    line-height:1.5;
+    min-height:100vh;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* Aurora background */
+  .aurora{position:fixed;inset:0;z-index:-2;overflow:hidden;background:
+     radial-gradient(1200px 700px at 80% -10%, rgba(56,189,248,0.10), transparent 60%),
+     radial-gradient(1000px 600px at 0% 10%, rgba(167,139,250,0.10), transparent 55%),
+     linear-gradient(180deg,#060912 0%, #070c18 40%, #060912 100%);}
+  .blob{position:absolute;border-radius:50%;filter:blur(80px);opacity:.45;animation:float 22s ease-in-out infinite}
+  .blob.b1{width:520px;height:520px;background:radial-gradient(circle,#0ea5e9,transparent 65%);top:-160px;right:-120px}
+  .blob.b2{width:480px;height:480px;background:radial-gradient(circle,#8b5cf6,transparent 65%);bottom:-180px;left:-120px;animation-delay:-7s}
+  .blob.b3{width:420px;height:420px;background:radial-gradient(circle,#14b8a6,transparent 65%);top:40%;left:55%;animation-delay:-13s}
+  @keyframes float{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(40px,-30px) scale(1.08)}66%{transform:translate(-30px,25px) scale(.95)}}
+
+  .wrap{max-width:1240px;margin:0 auto;padding:0 20px 80px}
+
+  /* Header / hero */
+  header.hero{text-align:center;padding:54px 0 26px}
+  .logo{display:inline-flex;align-items:center;gap:12px;font-family:'Space Grotesk';font-weight:700;letter-spacing:.5px;font-size:15px;color:var(--muted);text-transform:uppercase}
+  .logo .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--sky),var(--teal));box-shadow:0 0 14px var(--sky)}
+  h1{font-family:'Space Grotesk';font-weight:700;font-size:clamp(34px,6vw,62px);line-height:1.04;margin:18px 0 10px;letter-spacing:-1px}
+  h1 .grad{background:linear-gradient(110deg,var(--sky),var(--teal) 45%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted);max-width:620px;margin:0 auto;font-size:17px}
+
+  /* Search */
+  .searchbar{margin:34px auto 6px;max-width:640px;position:relative}
+  .searchbar form{display:flex;gap:10px;background:var(--card);border:1px solid var(--stroke-strong);border-radius:18px;padding:9px 9px 9px 18px;backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+  .searchbar svg.pin{flex:none;align-self:center;color:var(--muted)}
+  .searchbar input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-size:17px;font-family:inherit}
+  .searchbar input::placeholder{color:var(--muted2)}
+  .btn{border:none;cursor:pointer;font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#04121f;background:linear-gradient(120deg,var(--sky),var(--teal));border-radius:13px;padding:12px 22px;transition:transform .15s, box-shadow .2s;white-space:nowrap}
+  .btn:hover{transform:translateY(-1px);box-shadow:0 10px 24px -8px rgba(45,212,191,.6)}
+  .btn:active{transform:translateY(0)}
+  .examples{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px}
+  .chip{cursor:pointer;font-size:13px;color:var(--muted);background:rgba(148,163,184,0.08);border:1px solid var(--stroke);padding:6px 13px;border-radius:999px;transition:.15s}
+  .chip:hover{color:var(--text);border-color:var(--stroke-strong);background:rgba(148,163,184,0.14)}
+
+  /* geo dropdown */
+  .geo-list{position:absolute;left:0;right:0;top:100%;margin-top:8px;background:var(--card-solid);border:1px solid var(--stroke-strong);border-radius:14px;overflow:hidden;z-index:50;box-shadow:var(--shadow)}
+  .geo-list button{display:flex;width:100%;text-align:left;gap:10px;align-items:center;background:transparent;border:none;color:var(--text);padding:11px 16px;cursor:pointer;font-family:inherit;font-size:15px;border-bottom:1px solid var(--stroke)}
+  .geo-list button:last-child{border-bottom:none}
+  .geo-list button:hover{background:rgba(56,189,248,0.10)}
+  .geo-list .meta{color:var(--muted);font-size:13px}
+
+  /* status / loader */
+  #status{text-align:center;color:var(--muted);margin-top:26px;min-height:22px;font-size:15px}
+  .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(148,163,184,.3);border-top-color:var(--sky);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-3px;margin-right:8px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* results */
+  #results{display:none;margin-top:14px}
+  #results.show{display:block;animation:fade .5s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+  .place-head{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:14px;margin:8px 0 18px}
+  .place-head h2{font-family:'Space Grotesk';font-size:30px;margin:0;font-weight:700}
+  .place-head .where{color:var(--muted);font-size:15px;margin-top:3px}
+  .updated{color:var(--muted2);font-size:13px}
+
+  .grid{display:grid;gap:18px}
+  .cols-main{grid-template-columns:360px 1fr}
+  @media(max-width:880px){.cols-main{grid-template-columns:1fr}}
+
+  .card{background:var(--card);border:1px solid var(--stroke);border-radius:var(--radius);backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+  .card.pad{padding:20px}
+  .card h3{font-family:'Space Grotesk';font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:0 0 14px;font-weight:600}
+
+  /* Verdict / score */
+  .verdict-card{padding:24px;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;overflow:hidden}
+  .gauge{position:relative;width:190px;height:190px}
+  .gauge svg{transform:rotate(-90deg)}
+  .gauge .num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .gauge .num b{font-family:'Space Grotesk';font-size:50px;font-weight:700;line-height:1}
+  .gauge .num span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-top:4px}
+  .verdict-label{margin-top:18px;font-family:'Space Grotesk';font-size:24px;font-weight:700}
+  .verdict-desc{color:var(--muted);font-size:14px;margin-top:6px;max-width:300px}
+
+  /* metric tiles */
+  .metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .metric{background:rgba(13,19,33,0.5);border:1px solid var(--stroke);border-radius:14px;padding:14px}
+  .metric .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;display:flex;align-items:center;gap:6px}
+  .metric .v{font-family:'Space Grotesk';font-size:26px;font-weight:600;margin-top:6px;line-height:1}
+  .metric .u{font-size:13px;color:var(--muted);font-weight:400}
+  .metric .note{font-size:12px;color:var(--muted2);margin-top:5px}
+  .pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;margin-top:7px}
+  .pill.good{background:rgba(52,211,153,.16);color:var(--good)}
+  .pill.mid{background:rgba(251,191,36,.16);color:var(--mid)}
+  .pill.bad{background:rgba(251,113,133,.16);color:var(--bad)}
+  .pill.unknown{background:rgba(148,163,184,.16);color:var(--unknown)}
+
+  /* compass */
+  .compass-wrap{display:flex;flex-direction:column;align-items:center}
+  .compass{width:160px;height:160px}
+  .compass-legend{display:flex;gap:14px;margin-top:10px;font-size:12px;color:var(--muted);flex-wrap:wrap;justify-content:center}
+  .lg{display:inline-flex;align-items:center;gap:5px}
+  .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+  /* map */
+  #map{height:430px;width:100%;border-radius:var(--radius);z-index:1}
+  .leaflet-popup-content-wrapper{background:var(--card-solid);color:var(--text);border-radius:12px;border:1px solid var(--stroke-strong)}
+  .leaflet-popup-tip{background:var(--card-solid)}
+  .leaflet-popup-content{margin:12px 14px}
+  .leaflet-container{font-family:'Inter',sans-serif}
+  .pop b{font-family:'Space Grotesk';font-size:15px}
+  .pop .pbtn{margin-top:8px;cursor:pointer;font-size:12px;font-weight:600;color:#04121f;background:linear-gradient(120deg,var(--sky),var(--teal));border:none;border-radius:8px;padding:6px 12px}
+  .marker-pin{width:22px;height:22px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid rgba(255,255,255,.85);box-shadow:0 3px 8px rgba(0,0,0,.5)}
+
+  /* site list */
+  .sites-head{display:flex;align-items:center;justify-content:space-between;margin:28px 0 14px}
+  .sites-head h3{font-family:'Space Grotesk';font-size:20px;margin:0;font-weight:700;text-transform:none;letter-spacing:0;color:var(--text)}
+  .sites-head .count{color:var(--muted);font-size:14px}
+  .site-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+  .site{padding:16px;cursor:pointer;transition:.18s;border:1px solid var(--stroke)}
+  .site:hover{border-color:var(--stroke-strong);transform:translateY(-2px)}
+  .site .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+  .site .name{font-family:'Space Grotesk';font-weight:600;font-size:17px;line-height:1.2}
+  .site .sub{color:var(--muted);font-size:13px;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+  .site .dirs{display:flex;gap:4px;margin-top:12px;flex-wrap:wrap}
+  .dirtag{font-size:11px;font-weight:600;padding:3px 7px;border-radius:6px;background:rgba(148,163,184,.1);color:var(--muted)}
+  .dirtag.on{background:rgba(52,211,153,.16);color:var(--good)}
+  .dirtag.now{outline:2px solid var(--sky);outline-offset:1px}
+  .site .badges{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+  .badge{font-size:11px;padding:3px 8px;border-radius:999px;background:rgba(99,102,241,.14);color:#c7d2fe;display:inline-flex;align-items:center;gap:4px}
+  .vdot{width:9px;height:9px;border-radius:50%;flex:none}
+
+  /* detail modal */
+  .overlay{position:fixed;inset:0;background:rgba(3,6,14,.72);backdrop-filter:blur(6px);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto}
+  .overlay.show{display:flex;animation:fade .25s ease}
+  .modal{max-width:760px;width:100%;background:var(--card-solid);border:1px solid var(--stroke-strong);border-radius:24px;box-shadow:var(--shadow);overflow:hidden}
+  .modal-head{padding:22px 24px;border-bottom:1px solid var(--stroke);display:flex;justify-content:space-between;align-items:flex-start;gap:14px;position:relative}
+  .modal-head .hl{position:absolute;left:0;top:0;bottom:0;width:5px}
+  .modal-head h2{font-family:'Space Grotesk';margin:0;font-size:24px}
+  .modal-head .sub{color:var(--muted);font-size:14px;margin-top:4px}
+  .xbtn{cursor:pointer;background:rgba(148,163,184,.12);border:1px solid var(--stroke);color:var(--text);width:34px;height:34px;border-radius:10px;font-size:18px;flex:none;line-height:1}
+  .modal-body{padding:22px 24px}
+  .verdict-banner{border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:18px;font-weight:600}
+  .verdict-banner .big{font-family:'Space Grotesk';font-size:18px}
+  .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:620px){.detail-grid{grid-template-columns:1fr}}
+  .dbox{background:rgba(13,19,33,0.6);border:1px solid var(--stroke);border-radius:14px;padding:14px}
+  .dbox h4{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:600;font-family:'Space Grotesk'}
+  .row{display:flex;justify-content:space-between;font-size:14px;padding:4px 0;border-bottom:1px dashed rgba(148,163,184,.12)}
+  .row:last-child{border-bottom:none}
+  .row .rk{color:var(--muted)}
+  .row .rv{font-weight:600}
+  .aloft{display:flex;flex-direction:column;gap:8px}
+  .aloft .lvl{display:flex;align-items:center;gap:10px;font-size:13px}
+  .aloft .lvl .lab{width:64px;color:var(--muted);flex:none}
+  .aloft .bar{flex:1;height:8px;border-radius:6px;background:rgba(148,163,184,.12);overflow:hidden}
+  .aloft .bar i{display:block;height:100%;border-radius:6px}
+  .aloft .ar{width:28px;text-align:right;flex:none;font-family:'Space Grotesk'}
+  .windarrow{display:inline-block;width:18px;text-align:center;color:var(--sky)}
+
+  /* hourly strip */
+  .hours{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 10px;scrollbar-width:thin}
+  .hour{flex:none;width:74px;text-align:center;background:rgba(13,19,33,0.55);border:1px solid var(--stroke);border-radius:13px;padding:10px 6px}
+  .hour .t{font-size:12px;color:var(--muted)}
+  .hour .wd{font-size:18px;margin:5px 0 2px}
+  .hour .ws{font-family:'Space Grotesk';font-weight:600;font-size:15px}
+  .hour .gu{font-size:11px;color:var(--muted)}
+  .hour .cp{height:5px;border-radius:4px;margin-top:7px}
+  .hour.best{border-color:var(--good);box-shadow:0 0 0 1px var(--good) inset}
+
+  /* webcams / windy */
+  .embed-wrap{position:relative;border-radius:var(--radius);overflow:hidden;border:1px solid var(--stroke)}
+  .embed-wrap iframe{display:block;width:100%;height:440px;border:0}
+  .cam-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .cam-link{display:inline-flex;align-items:center;gap:8px;text-decoration:none;color:var(--text);font-size:14px;font-weight:500;background:rgba(148,163,184,.08);border:1px solid var(--stroke);padding:10px 14px;border-radius:12px;transition:.15s}
+  .cam-link:hover{border-color:var(--stroke-strong);background:rgba(56,189,248,.10)}
+  .cam-link .ic{font-size:16px}
+
+  .section-title{font-family:'Space Grotesk';font-size:20px;font-weight:700;margin:34px 0 14px;display:flex;align-items:center;gap:10px}
+  .section-title .ic{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,rgba(56,189,248,.2),rgba(167,139,250,.2));display:inline-flex;align-items:center;justify-content:center;font-size:15px}
+
+  .note-box{font-size:13px;color:var(--muted);background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.18);border-radius:12px;padding:12px 14px;margin-top:12px}
+
+  footer{margin-top:50px;padding-top:24px;border-top:1px solid var(--stroke);color:var(--muted);font-size:13px;text-align:center;line-height:1.7}
+  footer a{color:var(--sky);text-decoration:none}
+  .disclaimer{background:rgba(251,113,133,.06);border:1px solid rgba(251,113,133,.18);border-radius:14px;padding:14px 18px;margin:30px 0 0;font-size:13px;color:#fecdd3}
+  .disclaimer b{color:#fff}
+
+  .empty{color:var(--muted);text-align:center;padding:30px;font-size:15px}
+  .src-tag{font-size:10px;padding:1px 6px;border-radius:5px;background:rgba(148,163,184,.12);color:var(--muted2);vertical-align:middle}
+</style>
+</head>
+<body>
+<div class="aurora"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="logo"><span class="dot"></span> Thermik · Flugwetter</div>
+    <h1>Kann ich hier <span class="grad">fliegen?</span></h1>
+    <p class="sub">Ort eingeben – und sofort sehen: welche Startplätze es gibt, wie Wind, Thermik und Föhn gerade stehen, und ob es zum Gleitschirmfliegen passt.</p>
+
+    <div class="searchbar">
+      <form id="searchForm" autocomplete="off">
+        <svg class="pin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        <input id="q" type="text" placeholder="Ort eingeben – z. B. Innsbruck, Tegelberg, Annecy…" />
+        <button class="btn" type="submit">Prüfen</button>
+      </form>
+      <div id="geoList" class="geo-list" style="display:none"></div>
+    </div>
+    <div class="examples" id="examples">
+      <span class="chip">Innsbruck</span>
+      <span class="chip">Tegelberg</span>
+      <span class="chip">Annecy</span>
+      <span class="chip">Stubaital</span>
+      <span class="chip">Brauneck</span>
+      <span class="chip">Wallberg</span>
+      <span class="chip">Interlaken</span>
+    </div>
+  </header>
+
+  <div id="status"></div>
+
+  <main id="results">
+    <div class="place-head">
+      <div>
+        <h2 id="placeName"></h2>
+        <div class="where" id="placeWhere"></div>
+      </div>
+      <div class="updated" id="updated"></div>
+    </div>
+
+    <div class="grid cols-main">
+      <!-- left: verdict + compass -->
+      <div class="grid" style="align-content:start">
+        <div class="card verdict-card" id="verdictCard"></div>
+        <div class="card pad compass-wrap">
+          <h3 style="align-self:flex-start">Wind & Richtung</h3>
+          <div id="compassHost"></div>
+          <div class="compass-legend">
+            <span class="lg"><span class="sw" style="background:var(--sky)"></span>Aktueller Wind</span>
+            <span class="lg"><span class="sw" style="background:var(--good)"></span>geeignet (Ort)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- right: metrics + map -->
+      <div class="grid" style="align-content:start">
+        <div class="card pad">
+          <h3>Aktuelle Bedingungen</h3>
+          <div class="metrics" id="metrics"></div>
+        </div>
+        <div class="card" style="padding:6px"><div id="map"></div></div>
+      </div>
+    </div>
+
+    <!-- hourly window -->
+    <div class="card pad" style="margin-top:18px">
+      <h3>Tagesverlauf – wann passt das Fenster?</h3>
+      <div class="hours" id="hours"></div>
+    </div>
+
+    <!-- sites -->
+    <div class="sites-head">
+      <h3>Startplätze in der Umgebung</h3>
+      <span class="count" id="siteCount"></span>
+    </div>
+    <div class="site-grid" id="siteGrid"></div>
+
+    <!-- live map / webcams -->
+    <div class="section-title"><span class="ic">🪟</span> Webcams & Live-Windkarte</div>
+    <div class="card" style="padding:6px">
+      <div class="embed-wrap"><iframe id="windyFrame" title="Windkarte" loading="lazy"></iframe></div>
+    </div>
+    <div class="cam-links" id="camLinks"></div>
+    <div class="note-box">Live-Webcam-Bilder direkt einzubetten erfordert einen kostenpflichtigen API-Schlüssel. Die Buttons springen direkt zu den Webcams in der Nähe deiner Koordinaten – die Windkarte oben hat einen eigenen Webcam-Layer (Symbol oben rechts).</div>
+
+    <div class="disclaimer">
+      <b>⚠️ Sicherheitshinweis:</b> Dieses Tool ist eine Entscheidungshilfe, keine Flugfreigabe. Die Daten sind automatisierte Schätzungen aus öffentlichen Modellen und ersetzen <b>keinen</b> offiziellen Wetter-/Bergwetterbericht, keine Föhndiagnose, keine Luftraum-/NOTAM-Prüfung und keine Beurteilung vor Ort. Fliege nur im Rahmen deiner Ausbildung, deiner Lizenz und der lokalen Regeln. Im Zweifel: am Boden bleiben.
+    </div>
+
+    <footer>
+      Daten: Wetter & Geocoding © <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> · Startplätze © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkende &amp; <a href="https://www.paraglidingearth.com" target="_blank" rel="noopener">Paragliding Earth</a> · Karte: OpenTopoMap · Windkarte: <a href="https://www.windy.com" target="_blank" rel="noopener">Windy</a><br/>
+      Gebaut als Flugwetter-Schnellcheck. Bleib sicher da oben. 🪂
+    </footer>
+  </main>
+</div>
+
+<!-- detail modal -->
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+/* =========================================================================
+   Thermik – Paragliding-Check.  Vanilla JS, eine Datei.
+   Quellen: Open-Meteo (Geocoding+Forecast, CORS ok), Overpass (OSM, CORS ok),
+   ParaglidingEarth (reichere Daten inkl. Windrichtungen, via CORS-Proxy).
+   ========================================================================= */
+
+const DIRS8 = ['N','NO','O','SO','S','SW','W','NW'];           // 8-Sektoren (Anzeige)
+const DIRS8_KEY = ['N','NE','E','SE','S','SW','W','NW'];        // PGE-Property-Keys
+const DIRS16 = ['N','NNO','NO','ONO','O','OSO','SO','SSO','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+
+const $ = s => document.querySelector(s);
+const statusEl = $('#status');
+let map, markerLayer, currentData = null;
+
+/* ---------- kleine Helfer ---------- */
+function dirIdx8(deg){ return ((Math.round(deg/45))%8+8)%8; }
+function dirName8(deg){ return DIRS8[dirIdx8(deg)]; }
+function dirName16(deg){ return DIRS16[((Math.round(deg/22.5))%16+16)%16]; }
+function arrowFor(deg){ // Pfeil zeigt, WOHIN der Wind weht (Quelle+180)
+  const a=['↓','↙','←','↖','↑','↗','→','↘']; return a[dirIdx8((deg+180))]; }
+function haversine(a,b,c,d){const R=6371,t=x=>x*Math.PI/180,dla=t(c-a),dlo=t(d-b);
+  const x=Math.sin(dla/2)**2+Math.cos(t(a))*Math.cos(t(c))*Math.sin(dlo/2)**2;
+  return 2*R*Math.asin(Math.sqrt(x));}
+function fmt(n,d=0){return n==null||isNaN(n)?'–':Number(n).toFixed(d);}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+
+const WMO={0:['Klar','☀️'],1:['Heiter','🌤️'],2:['Wolkig','⛅'],3:['Bedeckt','☁️'],
+  45:['Nebel','🌫️'],48:['Reifnebel','🌫️'],51:['Niesel','🌦️'],53:['Niesel','🌦️'],55:['Niesel','🌧️'],
+  61:['Regen','🌧️'],63:['Regen','🌧️'],65:['Starkregen','🌧️'],71:['Schnee','🌨️'],73:['Schnee','🌨️'],75:['Schnee','❄️'],
+  80:['Schauer','🌦️'],81:['Schauer','🌧️'],82:['Starkschauer','⛈️'],95:['Gewitter','⛈️'],96:['Gewitter','⛈️'],99:['Gewitter','⛈️']};
+function wmo(c){return WMO[c]||['—','🌡️'];}
+
+/* ---------- Geocoding ---------- */
+async function geocode(name){
+  const u=`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=6&language=de&format=json`;
+  const r=await fetch(u); const j=await r.json(); return j.results||[];
+}
+
+/* ---------- Wetter ---------- */
+async function getWeather(lat,lon){
+  const cur=['temperature_2m','apparent_temperature','relative_humidity_2m','precipitation','weather_code','cloud_cover','pressure_msl','wind_speed_10m','wind_direction_10m','wind_gusts_10m','is_day'].join(',');
+  const hr=['temperature_2m','relative_humidity_2m','precipitation','precipitation_probability','weather_code','cloud_cover','wind_speed_10m','wind_speed_80m','wind_speed_120m','wind_speed_180m','wind_direction_10m','wind_direction_80m','wind_gusts_10m','cape','freezing_level_height','shortwave_radiation','wind_speed_850hPa','wind_direction_850hPa','wind_speed_700hPa','wind_direction_700hPa'].join(',');
+  const dl=['weather_code','temperature_2m_max','temperature_2m_min','wind_speed_10m_max','wind_gusts_10m_max','wind_direction_10m_dominant','precipitation_sum','sunrise','sunset'].join(',');
+  const u=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=${cur}&hourly=${hr}&daily=${dl}&timezone=auto&forecast_days=2`;
+  const r=await fetch(u); return r.json();
+}
+
+/* ---------- Startplätze: Overpass (Backbone) ---------- */
+async function getOverpass(lat,lon){
+  const q=`[out:json][timeout:25];(node["sport"="free_flying"](around:25000,${lat},${lon});way["sport"="free_flying"](around:25000,${lat},${lon});node["paragliding"](around:25000,${lat},${lon}););out center tags;`;
+  try{
+    const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q)});
+    const j=await r.json();
+    return (j.elements||[]).map(e=>{
+      const t=e.tags||{}; const la=e.lat??e.center?.lat, lo=e.lon??e.center?.lon;
+      if(la==null||lo==null) return null;
+      let type='Fluggelände';
+      const isLand=t['free_flying:landing']==='yes'||/lande/i.test(t.name||'');
+      const isTake=t['free_flying:takeoff']==='yes'||t.paragliding==='takeoff';
+      if(isTake) type='Startplatz'; else if(isLand) type='Landeplatz';
+      return {name:t.name||'Fluggelände (unbenannt)',lat:la,lon:lo,type,
+        alt:t.ele?parseInt(t.ele):null,desc:t.description||'',windDirs:null,
+        thermals:null,soaring:null,hang:t['free_flying:hanggliding']==='yes',
+        school:t['free_flying:school']==='yes',source:'osm'};
+    }).filter(Boolean);
+  }catch(e){ console.warn('Overpass fail',e); return []; }
+}
+
+/* ---------- Startplätze: ParaglidingEarth via Proxy (Anreicherung) ---------- */
+async function getParaglidingEarth(lat,lon){
+  const target=`https://www.paraglidingearth.com/api/geojson/getAroundLatLngSites.php?lat=${lat}&lng=${lon}&distance=35&limit=100&style=detailled`;
+  // CORS-Proxies in Reihenfolge der Zuverlässigkeit. Die ersten beiden (Cloudflare-
+  // Worker + cors.sh) liefern stabil 200 + ACAO:*; allorigins nur noch als Fallback.
+  const proxies=[
+    u=>({url:`https://cors-get-proxy.sirjosh.workers.dev/?url=${encodeURIComponent(u)}`,wrap:false}),
+    u=>({url:`https://proxy.cors.sh/${u}`,wrap:false}),
+    u=>({url:`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,wrap:false}),
+    u=>({url:`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,wrap:true}),
+  ];
+  for(let attempt=0;attempt<3;attempt++){
+    for(const mk of proxies){
+      try{
+        const {url,wrap}=mk(target);
+        const r=await fetch(url,{signal:AbortSignal.timeout(9000)});
+        if(!r.ok) continue;
+        let txt=await r.text(), data;
+        if(wrap){ const j=JSON.parse(txt); data=JSON.parse(j.contents); }
+        else data=JSON.parse(txt);
+        if(data&&data.features) return data.features.map(f=>{
+          const p=f.properties||{}, c=f.geometry?.coordinates||[];
+          const place=(p.place||'').toLowerCase();
+          let type='Startplatz';
+          if(place.includes('landing')||place.includes('lande')) type='Landeplatz';
+          const wd=DIRS8_KEY.map(k=>parseInt(p[k]||'0'));
+          return {name:p.name||'Startplatz',lat:c[1],lon:c[0],type,
+            alt:p.takeoff_altitude?parseInt(p.takeoff_altitude):null,
+            desc:p.takeoff_description||'',
+            // Alle Sektoren 0 = keine Richtung hinterlegt -> als unbekannt behandeln,
+            // nicht als "überall ungeeignet".
+            windDirs:wd.some(v=>v>0)?wd:null,
+            thermals:p.thermals==='1',soaring:p.soaring==='1',hang:p.hanggliding==='1',
+            school:false,source:'pge'};
+        });
+      }catch(e){ /* nächster Proxy */ }
+    }
+  }
+  return null; // alle Proxies tot -> graceful
+}
+
+/* ---------- Merge: PGE (reich) + Overpass (zuverlässig) ---------- */
+function mergeSites(pge,osm,lat,lon){
+  const out=[];
+  const push=s=>{ s.distance=haversine(lat,lon,s.lat,s.lon); out.push(s); };
+  (pge||[]).forEach(push);
+  (osm||[]).forEach(s=>{
+    const near=out.find(o=>haversine(o.lat,o.lon,s.lat,s.lon)<0.35);
+    if(near){ // anreichern statt duplizieren
+      if(near.alt==null) near.alt=s.alt;
+      if(!near.desc) near.desc=s.desc;
+      if(s.school) near.school=true;
+      return;
+    }
+    push(s);
+  });
+  return out.sort((a,b)=>a.distance-b.distance).slice(0,40);
+}
+
+/* =========================================================================
+   Bewertungslogik
+   ========================================================================= */
+function hourIndexNow(wx){
+  const now=Date.now();
+  let best=0,bd=Infinity;
+  wx.hourly.time.forEach((t,i)=>{const d=Math.abs(new Date(t).getTime()-now);if(d<bd){bd=d;best=i;}});
+  return best;
+}
+
+// Flugwetter-Score für den Ort (0-100) + Begründung
+function flyScore(wx,hi){
+  const c=wx.current;
+  const ws=c.wind_speed_10m, gust=c.wind_gusts_10m, dir=c.wind_direction_10m;
+  const precip=c.precipitation, cloud=c.cloud_cover, hum=c.relative_humidity_2m;
+  const cape=wx.hourly.cape?.[hi]??0;
+  const spread=gust-ws;
+  let score=100; const reasons=[];
+
+  // Windstärke (ideal ~6-22 km/h)
+  if(ws<3){score-=8;reasons.push('sehr schwacher Wind – eher thermisch/soaring');}
+  else if(ws<=22){/* ok */}
+  else if(ws<=28){score-=22;reasons.push('frischer Wind');}
+  else if(ws<=35){score-=42;reasons.push('starker Wind');}
+  else {score-=70;reasons.push('zu starker Wind');}
+
+  // Böigkeit
+  if(spread>25){score-=35;reasons.push('sehr böig');}
+  else if(spread>15){score-=18;reasons.push('böig');}
+
+  // Niederschlag
+  if(precip>0.3){score-=45;reasons.push('Niederschlag');}
+  else if(precip>0){score-=18;reasons.push('etwas Nass');}
+
+  // Bewölkung
+  if(cloud>92){score-=12;reasons.push('bedeckt');}
+
+  // Gewitter / Überentwicklung
+  if(cape>2200){score-=32;reasons.push('Gewittergefahr (hohe CAPE)');}
+  else if(cape>1200){score-=10;reasons.push('kräftige, evtl. überentwickelte Thermik');}
+
+  // Föhn
+  const fo=foehnRisk(wx,hi);
+  if(fo.score>70){score-=32;reasons.push('hohes Föhnrisiko');}
+  else if(fo.score>45){score-=15;reasons.push('mögl. Föhn');}
+
+  score=clamp(Math.round(score),0,100);
+  let label,desc,color;
+  if(score>=75){label='Sieht gut aus';color='var(--good)';desc='Die großräumigen Bedingungen sprechen fürs Fliegen – Details am Startplatz prüfen.';}
+  else if(score>=55){label='Brauchbar';color='var(--teal)';desc='Grundsätzlich machbar, aber genau hinschauen.';}
+  else if(score>=35){label='Grenzwertig';color='var(--mid)';desc='Nur mit Erfahrung und genauer Beobachtung – eher kritisch.';}
+  else{label='Eher nicht';color='var(--bad)';desc='Die Bedingungen sprechen aktuell gegen einen Start.';}
+  return {score,label,desc,color,reasons,foehn:fo};
+}
+
+// Föhn-Heuristik (Schätzung!). Hoch bei: trocken + böig + kräftiger Höhenwind + warm
+function foehnRisk(wx,hi){
+  const c=wx.current;
+  const hum=c.relative_humidity_2m, gust=c.wind_gusts_10m, ws=c.wind_speed_10m;
+  const w700=wx.hourly.wind_speed_700hPa?.[hi]??0;
+  const w850=wx.hourly.wind_speed_850hPa?.[hi]??0;
+  let s=0;
+  if(hum<45) s+=(45-hum)*1.4;        // trockene Luft
+  if(gust>28) s+=(gust-28)*1.3;       // Böigkeit
+  if(gust-ws>14) s+=(gust-ws-14)*1.0; // Differenz Böe/Wind
+  if(w700>45) s+=(w700-45)*0.8;       // kräftiger Höhenwind ~3000m
+  if(w850>40) s+=(w850-40)*0.6;       // Höhenwind ~1500m
+  s=clamp(Math.round(s),0,100);
+  let label,cls;
+  if(s<25){label='gering';cls='good';}
+  else if(s<45){label='leicht erhöht';cls='mid';}
+  else if(s<70){label='erhöht';cls='mid';}
+  else{label='hoch';cls='bad';}
+  return {score:s,label,cls};
+}
+
+// Thermik-Einschätzung aus CAPE + Einstrahlung
+function thermik(wx,hi){
+  const cape=wx.hourly.cape?.[hi]??0;
+  const rad=wx.hourly.shortwave_radiation?.[hi]??0;
+  let label,cls;
+  if(cape<80){label='schwach';cls='unknown';}
+  else if(cape<400){label='mäßig';cls='mid';}
+  else if(cape<1100){label='gut';cls='good';}
+  else if(cape<2000){label='kräftig';cls='mid';}
+  else{label='überentwickelt';cls='bad';}
+  if(rad<120 && cape<400){label='schwach (wenig Sonne)';cls='unknown';}
+  return {cape,rad,label,cls};
+}
+
+// Verdict pro Startplatz, abhängig von aktuellem Wind
+function siteVerdict(site,wx){
+  const c=wx.current; const ws=c.wind_speed_10m, gust=c.wind_gusts_10m, dir=c.wind_direction_10m;
+  // Windstärke
+  if(gust>42||ws>32) return {cls:'bad',color:'var(--bad)',txt:'Zu stark',
+    why:`Wind ${fmt(ws)}/Böen ${fmt(gust)} km/h – zu kräftig zum Starten.`};
+  // Richtung
+  if(site.windDirs){
+    const i=dirIdx8(dir); const v=site.windDirs[i];
+    const adj=Math.max(site.windDirs[(i+1)%8],site.windDirs[(i+7)%8]);
+    if(v===0&&adj===0) return {cls:'bad',color:'var(--bad)',txt:'Falsche Windrichtung',
+      why:`Wind aus ${dirName16(dir)} – dieser Platz braucht eine andere Richtung.`};
+    const strong = ws>=3 && ws<=24;
+    if(v>=2&&strong) return {cls:'good',color:'var(--good)',txt:'Startbar',
+      why:`Wind aus ${dirName16(dir)} passt zur Hauptstartrichtung, Stärke ${fmt(ws)} km/h.`};
+    if(v>=1||adj>=1){
+      if(ws<3) return {cls:'mid',color:'var(--mid)',txt:'Sehr leicht',
+        why:`Richtung passt, aber kaum Wind (${fmt(ws)} km/h) – thermik-/nullwindabhängig.`};
+      return {cls:'mid',color:'var(--mid)',txt:'Bedingt startbar',
+        why:`Richtung grenzwertig (${dirName16(dir)}), Stärke ${fmt(ws)} km/h – beobachten.`};
+    }
+  }
+  // keine Richtungsdaten -> nur Stärke
+  if(ws<3) return {cls:'unknown',color:'var(--unknown)',txt:'Kaum Wind',
+    why:`Wenig Wind (${fmt(ws)} km/h). Startrichtung dieses Platzes unbekannt – vor Ort prüfen.`};
+  if(ws<=24) return {cls:'mid',color:'var(--mid)',txt:'Stärke ok',
+    why:`Windstärke ${fmt(ws)} km/h passt. Geeignete Startrichtung unbekannt – vor Ort prüfen.`};
+  return {cls:'mid',color:'var(--mid)',txt:'Frisch',
+    why:`Wind ${fmt(ws)} km/h, eher frisch. Startrichtung unbekannt.`};
+}
+
+/* =========================================================================
+   Rendering
+   ========================================================================= */
+function renderVerdict(fs){
+  const r=2*Math.PI*80, off=r*(1-fs.score/100);
+  $('#verdictCard').innerHTML=`
+    <h3 style="align-self:flex-start">Flugwetter-Score</h3>
+    <div class="gauge">
+      <svg width="190" height="190">
+        <circle cx="95" cy="95" r="80" fill="none" stroke="rgba(148,163,184,.14)" stroke-width="14"/>
+        <circle cx="95" cy="95" r="80" fill="none" stroke="${fs.color}" stroke-width="14"
+          stroke-linecap="round" stroke-dasharray="${r}" stroke-dashoffset="${off}"
+          style="transition:stroke-dashoffset 1s ease"/>
+      </svg>
+      <div class="num"><b style="color:${fs.color}">${fs.score}</b><span>von 100</span></div>
+    </div>
+    <div class="verdict-label" style="color:${fs.color}">${fs.label}</div>
+    <div class="verdict-desc">${fs.desc}</div>
+    ${fs.reasons.length?`<div class="verdict-desc" style="margin-top:10px;font-size:12.5px;color:var(--muted2)">Faktoren: ${fs.reasons.join(' · ')}</div>`:''}`;
+}
+
+function renderMetrics(wx,hi){
+  const c=wx.current; const [wtxt,wemo]=wmo(c.weather_code);
+  const th=thermik(wx,hi); const fo=foehnRisk(wx,hi);
+  const fl=wx.hourly.freezing_level_height?.[hi];
+  const spread=c.wind_gusts_10m-c.wind_speed_10m;
+  const windPill = c.wind_speed_10m<=22 ? 'good' : c.wind_speed_10m<=30 ? 'mid':'bad';
+  const gustPill = spread>22?'bad':spread>13?'mid':'good';
+  const m=[
+    {k:'🌡️ Temperatur',v:fmt(c.temperature_2m,0),u:'°C',note:`gefühlt ${fmt(c.apparent_temperature,0)}°C`},
+    {k:`${wemo} Wetter`,v:wtxt,u:'',note:`Wolken ${fmt(c.cloud_cover)} %`},
+    {k:'💨 Wind 10 m',v:fmt(c.wind_speed_10m,0),u:'km/h',pill:windPill,pillTxt:`aus ${dirName16(c.wind_direction_10m)}`},
+    {k:'🌀 Böen',v:fmt(c.wind_gusts_10m,0),u:'km/h',pill:gustPill,pillTxt:spread>22?'sehr böig':spread>13?'böig':'gleichmäßig'},
+    {k:'🔥 Thermik',v:th.label,u:'',pill:th.cls,pillTxt:`CAPE ${fmt(th.cape)} J/kg`},
+    {k:'⛰️ Föhnrisiko',v:fo.label,u:'',pill:fo.cls,pillTxt:`Index ${fo.score}/100`},
+    {k:'💧 Luftfeuchte',v:fmt(c.relative_humidity_2m),u:'%',note:`Luftdruck ${fmt(c.pressure_msl)} hPa`},
+    {k:'❄️ Nullgradgrenze',v:fl!=null?fmt(fl):'–',u:'m',note:'Modellhöhe'},
+  ];
+  $('#metrics').innerHTML=m.map(x=>`
+    <div class="metric">
+      <div class="k">${x.k}</div>
+      <div class="v">${x.v}<span class="u"> ${x.u}</span></div>
+      ${x.pill?`<span class="pill ${x.pill}">${x.pillTxt}</span>`:''}
+      ${x.note?`<div class="note">${x.note}</div>`:''}
+    </div>`).join('');
+}
+
+// Kompass-SVG: Sektoren des Startplatzes (optional) + aktueller Wind
+function compassSVG(windDir, dirs, size=160){
+  const cx=size/2, cy=size/2, R=size/2-8;
+  const wedge=(i,rIn,rOut,fill)=>{
+    const a0=(i*45-22.5-90)*Math.PI/180, a1=(i*45+22.5-90)*Math.PI/180;
+    const x0=cx+rOut*Math.cos(a0),y0=cy+rOut*Math.sin(a0);
+    const x1=cx+rOut*Math.cos(a1),y1=cy+rOut*Math.sin(a1);
+    const x2=cx+rIn*Math.cos(a1),y2=cy+rIn*Math.sin(a1);
+    const x3=cx+rIn*Math.cos(a0),y3=cy+rIn*Math.sin(a0);
+    return `<path d="M${x0},${y0} A${rOut},${rOut} 0 0 1 ${x1},${y1} L${x2},${y2} A${rIn},${rIn} 0 0 0 ${x3},${y3} Z" fill="${fill}"/>`;
+  };
+  let wedges='';
+  if(dirs){ for(let i=0;i<8;i++){ const v=dirs[i];
+    if(v>0) wedges+=wedge(i,R*0.55,R, v>=2?'rgba(52,211,153,.55)':'rgba(52,211,153,.22)'); } }
+  // Himmelsrichtungs-Labels
+  let labels='';
+  DIRS8.forEach((d,i)=>{const a=(i*45-90)*Math.PI/180;const lr=R+0; // innen
+    const lx=cx+(R*0.42)*Math.cos(a),ly=cy+(R*0.42)*Math.sin(a)+4;
+    labels+=`<text x="${lx}" y="${ly}" text-anchor="middle" font-size="11" fill="${i%2?'#64748b':'#95a3bd'}" font-weight="${i===0?'700':'500'}" font-family="Space Grotesk">${d}</text>`;});
+  // aktueller Wind: Pfeil von der Quelle nach innen
+  const wa=(windDir-90)*Math.PI/180;
+  const tipx=cx+R*0.9*Math.cos(wa), tipy=cy+R*0.9*Math.sin(wa); // Quelle (außen)
+  const ix=cx+R*0.15*Math.cos(wa), iy=cy+R*0.15*Math.sin(wa);
+  return `<svg class="compass" viewBox="0 0 ${size} ${size}">
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="rgba(13,19,33,.5)" stroke="rgba(148,163,184,.2)"/>
+    <circle cx="${cx}" cy="${cy}" r="${R*0.55}" fill="none" stroke="rgba(148,163,184,.12)"/>
+    ${wedges}${labels}
+    <line x1="${tipx}" y1="${tipy}" x2="${ix}" y2="${iy}" stroke="var(--sky)" stroke-width="3.5" stroke-linecap="round"/>
+    <circle cx="${tipx}" cy="${tipy}" r="5.5" fill="var(--sky)"/>
+    <circle cx="${cx}" cy="${cy}" r="4" fill="#eaf0fb"/>
+  </svg>`;
+}
+
+function renderCompass(wx,sites){
+  // Sektoren aus dem nächstgelegenen Startplatz mit Richtungsdaten (Kontext)
+  const withDirs=sites.find(s=>s.windDirs);
+  $('#compassHost').innerHTML=compassSVG(wx.current.wind_direction_10m, withDirs?withDirs.windDirs:null)
+    + `<div style="text-align:center;margin-top:8px;font-size:13px;color:var(--muted)">Wind aus <b style="color:var(--sky)">${dirName16(wx.current.wind_direction_10m)}</b> · ${fmt(wx.current.wind_speed_10m)} km/h`
+    + (withDirs?`<br><span style="font-size:12px">grün = Startrichtungen von „${withDirs.name}“</span>`:'')+`</div>`;
+}
+
+function renderHours(wx,daily){
+  const host=$('#hours'); const H=wx.hourly; const now=Date.now();
+  const sr=new Date(daily.sunrise[0]).getHours(), ss=new Date(daily.sunset[0]).getHours();
+  let html='', best=-1, bestScore=-1;
+  const items=[];
+  H.time.forEach((t,i)=>{
+    const d=new Date(t); const hh=d.getHours();
+    if(d.getTime()<now-3600e3) return;          // Vergangenheit raus
+    if(items.length>=14) return;
+    if(hh<Math.max(6,sr-1)||hh>Math.min(21,ss+1)) return; // nur Tag
+    items.push({i,d,hh});
+  });
+  items.forEach((it,k)=>{
+    const i=it.i;
+    const ws=H.wind_speed_10m[i], gu=H.wind_gusts_10m[i], dir=H.wind_direction_10m[i];
+    const pr=H.precipitation[i], cape=H.cape?.[i]??0;
+    // simpler Stundenscore zum Highlighten
+    let sc=100; if(ws>22)sc-=30; if(ws>30)sc-=30; if(gu-ws>15)sc-=25; if(pr>0)sc-=40; if(ws<3)sc-=8;
+    if(sc>bestScore){bestScore=sc;best=k;}
+    const capeCol = cape<80?'rgba(148,163,184,.3)':cape<400?'var(--mid)':cape<1100?'var(--good)':cape<2000?'var(--mid)':'var(--bad)';
+    const wsCol = ws<=22?'var(--good)':ws<=30?'var(--mid)':'var(--bad)';
+    items[k].html=`<div class="hour" data-k="${k}">
+      <div class="t">${String(it.hh).padStart(2,'0')}:00</div>
+      <div class="wd" style="color:var(--sky)" title="aus ${dirName16(dir)}">${arrowFor(dir)}</div>
+      <div class="ws" style="color:${wsCol}">${fmt(ws)}</div>
+      <div class="gu">Böe ${fmt(gu)}</div>
+      <div class="cp" style="background:${capeCol}" title="CAPE ${fmt(cape)} J/kg"></div>
+    </div>`;
+  });
+  host.innerHTML=items.map(x=>x.html).join('');
+  if(best>=0){const el=host.querySelector(`[data-k="${best}"]`); if(el)el.classList.add('best');}
+}
+
+/* ---------- Karte ---------- */
+function pinIcon(color){
+  return L.divIcon({className:'',html:`<div class="marker-pin" style="background:${color}"></div>`,
+    iconSize:[22,22],iconAnchor:[11,20],popupAnchor:[0,-18]});
+}
+function renderMap(lat,lon,sites,wx,fit=true){
+  if(!map){
+    map=L.map('map',{zoomControl:true,scrollWheelZoom:false}).setView([lat,lon],11);
+    L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{
+      maxZoom:17,attribution:'© OpenTopoMap (CC-BY-SA) · © OpenStreetMap'}).addTo(map);
+    markerLayer=L.layerGroup().addTo(map);
+    map.on('click',()=>map.scrollWheelZoom.enable());
+  }else{ map.setView([lat,lon],11); markerLayer.clearLayers(); }
+  // Ortsmarker
+  L.circleMarker([lat,lon],{radius:7,color:'#fff',weight:2,fillColor:'#38bdf8',fillOpacity:1})
+    .addTo(markerLayer).bindPopup(`<div class="pop"><b>📍 Suchort</b></div>`);
+  const bounds=[[lat,lon]];
+  sites.forEach((s,idx)=>{
+    const v=siteVerdict(s,wx);
+    const m=L.marker([s.lat,s.lon],{icon:pinIcon(v.color)}).addTo(markerLayer);
+    m.bindPopup(`<div class="pop"><b>${s.name}</b><br>
+      <span style="color:var(--muted);font-size:12px">${s.type}${s.alt?` · ${s.alt} m`:''} · ${fmt(s.distance,1)} km</span><br>
+      <span style="color:${v.color};font-weight:600;font-size:13px">● ${v.txt}</span><br>
+      <button class="pbtn" onclick="openSite(${idx})">Details ansehen</button></div>`);
+    bounds.push([s.lat,s.lon]);
+  });
+  if(fit && bounds.length>1){ try{ map.fitBounds(bounds,{padding:[40,40],maxZoom:12}); }catch(e){} }
+  setTimeout(()=>map.invalidateSize(),60);
+}
+
+/* ---------- Startplatz-Karten ---------- */
+function dirTags(site,wx){
+  if(!site.windDirs) return '<div class="site-sub" style="color:var(--muted2);font-size:12px;margin-top:10px">Startrichtungen unbekannt</div>';
+  const nowI=dirIdx8(wx.current.wind_direction_10m);
+  return `<div class="dirs">`+DIRS8.map((d,i)=>{
+    const v=site.windDirs[i];
+    return `<span class="dirtag ${v>0?'on':''} ${i===nowI?'now':''}">${d}</span>`;
+  }).join('')+`</div>`;
+}
+function renderSites(sites,wx){
+  $('#siteCount').textContent=`${sites.length} gefunden`;
+  const g=$('#siteGrid');
+  if(!sites.length){ g.innerHTML='<div class="card empty">Keine eingetragenen Startplätze im Umkreis von 25 km gefunden. Probier einen Ort näher an einem bekannten Fluggebiet.</div>'; return; }
+  g.innerHTML=sites.map((s,idx)=>{
+    const v=siteVerdict(s,wx);
+    const badges=[];
+    if(s.thermals) badges.push('🔥 Thermik');
+    if(s.soaring) badges.push('🛫 Soaring');
+    if(s.hang) badges.push('🪁 Drachen');
+    if(s.school) badges.push('🎓 Schule');
+    return `<div class="card site" onclick="openSite(${idx})">
+      <div class="top">
+        <div>
+          <div class="name">${s.name}</div>
+          <div class="sub">${s.type}${s.alt?` · ${s.alt} m`:''} · ${fmt(s.distance,1)} km <span class="src-tag">${s.source==='pge'?'PG-Earth':'OSM'}</span></div>
+        </div>
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:${v.color};white-space:nowrap">
+          <span class="vdot" style="background:${v.color}"></span>${v.txt}</span>
+      </div>
+      ${dirTags(s,wx)}
+      ${badges.length?`<div class="badges">${badges.map(b=>`<span class="badge">${b}</span>`).join('')}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+/* ---------- Detail-Modal ---------- */
+function aloftRow(label,spd,dir){
+  const w=clamp((spd/50)*100,3,100);
+  const col=spd<=20?'var(--good)':spd<=35?'var(--mid)':'var(--bad)';
+  return `<div class="lvl"><span class="lab">${label}</span>
+    <span class="windarrow" title="aus ${dir!=null?dirName16(dir):'–'}">${dir!=null?arrowFor(dir):''}</span>
+    <span class="bar"><i style="width:${w}%;background:${col}"></i></span>
+    <span class="ar">${fmt(spd)}</span></div>`;
+}
+function openSite(idx){
+  const s=currentData.sites[idx], wx=currentData.wx, hi=currentData.hi;
+  const v=siteVerdict(s,wx); const c=wx.current; const th=thermik(wx,hi); const fo=foehnRisk(wx,hi);
+  const H=wx.hourly;
+  const dirHtml = s.windDirs
+    ? `<div style="display:flex;justify-content:center;margin:6px 0 10px">${compassSVG(c.wind_direction_10m,s.windDirs,150)}</div>
+       <div class="dirs" style="justify-content:center">`+DIRS8.map((d,i)=>{const val=s.windDirs[i];const nowI=dirIdx8(c.wind_direction_10m);
+         return `<span class="dirtag ${val>0?'on':''} ${i===nowI?'now':''}">${d}${val>=2?' ★':''}</span>`;}).join('')+`</div>
+       <div style="text-align:center;font-size:12px;color:var(--muted);margin-top:8px">★ = Hauptstartrichtung · blau umrandet = aktueller Wind (${dirName16(c.wind_direction_10m)})</div>`
+    : `<div style="text-align:center;color:var(--muted);padding:14px;font-size:13px">Für diesen Platz sind keine geeigneten Startrichtungen hinterlegt. Aktueller Wind: <b style="color:var(--sky)">${dirName16(c.wind_direction_10m)}</b>, ${fmt(c.wind_speed_10m)} km/h.</div>`;
+
+  $('#modal').innerHTML=`
+    <div class="modal-head">
+      <div class="hl" style="background:${v.color}"></div>
+      <div>
+        <h2>${s.name}</h2>
+        <div class="sub">${s.type}${s.alt?` · Starthöhe ${s.alt} m`:''} · ${fmt(s.distance,1)} km vom Suchort · Quelle: ${s.source==='pge'?'Paragliding Earth':'OpenStreetMap'}</div>
+      </div>
+      <button class="xbtn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="verdict-banner" style="background:${v.color}1f;border:1px solid ${v.color}55;color:${v.color}">
+        <span class="big">● ${v.txt}</span>
+        <span style="color:var(--text);font-weight:400;font-size:13.5px">${v.why}</span>
+      </div>
+
+      <div class="dbox" style="margin-bottom:14px">
+        <h4>Geeignete Startrichtungen</h4>
+        ${dirHtml}
+      </div>
+
+      ${s.desc?`<div class="dbox" style="margin-bottom:14px"><h4>Beschreibung</h4><div style="font-size:14px;color:var(--text)">${s.desc}</div></div>`:''}
+
+      <div class="detail-grid">
+        <div class="dbox">
+          <h4>Wind & Boden</h4>
+          <div class="row"><span class="rk">Wind 10 m</span><span class="rv">${fmt(c.wind_speed_10m)} km/h aus ${dirName16(c.wind_direction_10m)}</span></div>
+          <div class="row"><span class="rk">Böen</span><span class="rv">${fmt(c.wind_gusts_10m)} km/h</span></div>
+          <div class="row"><span class="rk">Temperatur</span><span class="rv">${fmt(c.temperature_2m)} °C (gefühlt ${fmt(c.apparent_temperature)})</span></div>
+          <div class="row"><span class="rk">Luftfeuchte</span><span class="rv">${fmt(c.relative_humidity_2m)} %</span></div>
+          <div class="row"><span class="rk">Bewölkung</span><span class="rv">${fmt(c.cloud_cover)} %</span></div>
+        </div>
+        <div class="dbox">
+          <h4>Thermik & Höhe</h4>
+          <div class="row"><span class="rk">Thermik</span><span class="rv" style="text-transform:capitalize">${th.label}</span></div>
+          <div class="row"><span class="rk">CAPE</span><span class="rv">${fmt(th.cape)} J/kg</span></div>
+          <div class="row"><span class="rk">Einstrahlung</span><span class="rv">${fmt(th.rad)} W/m²</span></div>
+          <div class="row"><span class="rk">Nullgradgrenze</span><span class="rv">${fmt(H.freezing_level_height?.[hi])} m</span></div>
+          <div class="row"><span class="rk">Föhnrisiko</span><span class="rv" style="color:var(--${fo.cls==='good'?'good':fo.cls==='bad'?'bad':'mid'})">${fo.label} (${fo.score}/100)</span></div>
+        </div>
+      </div>
+
+      <div class="dbox" style="margin-top:14px">
+        <h4>Höhenwind (Modell)</h4>
+        <div class="aloft">
+          ${aloftRow('10 m',c.wind_speed_10m,c.wind_direction_10m)}
+          ${aloftRow('80 m',H.wind_speed_80m?.[hi],H.wind_direction_80m?.[hi])}
+          ${aloftRow('120 m',H.wind_speed_120m?.[hi],H.wind_direction_80m?.[hi])}
+          ${aloftRow('180 m',H.wind_speed_180m?.[hi],H.wind_direction_80m?.[hi])}
+          ${aloftRow('~1500 m',H.wind_speed_850hPa?.[hi],H.wind_direction_850hPa?.[hi])}
+          ${aloftRow('~3000 m',H.wind_speed_700hPa?.[hi],H.wind_direction_700hPa?.[hi])}
+        </div>
+        <div style="font-size:11.5px;color:var(--muted2);margin-top:10px">Balken: Windgeschwindigkeit in km/h · Pfeil: Richtung, in die der Wind weht.</div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+        <a class="cam-link" href="https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lon}" target="_blank" rel="noopener"><span class="ic">🗺️</span> In Google Maps</a>
+        <a class="cam-link" href="https://www.windy.com/?${s.lat.toFixed(3)},${s.lon.toFixed(3)},12" target="_blank" rel="noopener"><span class="ic">💨</span> Windy an diesem Platz</a>
+        ${s.source==='pge'?`<a class="cam-link" href="https://www.paraglidingearth.com" target="_blank" rel="noopener"><span class="ic">🪂</span> Paragliding Earth</a>`:''}
+      </div>
+    </div>`;
+  $('#overlay').classList.add('show');
+}
+function closeModal(){ $('#overlay').classList.remove('show'); }
+$('#overlay').addEventListener('click',e=>{ if(e.target.id==='overlay') closeModal(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeModal(); });
+
+/* ---------- Webcams / Windy-Embed ---------- */
+function renderEmbeds(lat,lon,name){
+  $('#windyFrame').src=`https://embed.windy.com/embed2.html?lat=${lat}&lon=${lon}&detailLat=${lat}&detailLon=${lon}&zoom=10&level=surface&overlay=wind&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1`;
+  const enc=encodeURIComponent(name);
+  $('#camLinks').innerHTML=`
+    <a class="cam-link" href="https://www.windy.com/?webcams,${lat.toFixed(3)},${lon.toFixed(3)},10" target="_blank" rel="noopener"><span class="ic">📷</span> Windy Webcams in der Nähe</a>
+    <a class="cam-link" href="https://www.foto-webcam.eu/webcam/" target="_blank" rel="noopener"><span class="ic">🏔️</span> foto-webcam.eu (Alpen)</a>
+    <a class="cam-link" href="https://www.panomax.com/" target="_blank" rel="noopener"><span class="ic">🌄</span> Panomax Panorama-Cams</a>
+    <a class="cam-link" href="https://www.bergfex.at/sommer/webcams/?q=${enc}" target="_blank" rel="noopener"><span class="ic">⛰️</span> Bergfex Webcams</a>
+    <a class="cam-link" href="https://www.holfuy.com/de/weather/map?lat=${lat}&lon=${lon}" target="_blank" rel="noopener"><span class="ic">📡</span> Holfuy Live-Windstationen</a>`;
+}
+
+/* =========================================================================
+   Ablauf
+   ========================================================================= */
+function setStatus(html){ statusEl.innerHTML=html; }
+
+async function run(place){
+  closeGeo();
+  $('#results').classList.remove('show');
+  setStatus(`<span class="spinner"></span> Daten für „${place.name}“ werden geladen…`);
+  try{
+    const lat=place.latitude, lon=place.longitude;
+    // Schritt 1: Wetter + OSM-Startplätze – beide CORS-nativ, schnell.
+    const [wx, osm] = await Promise.all([ getWeather(lat,lon), getOverpass(lat,lon) ]);
+    let sites=mergeSites(null,osm,lat,lon);
+    const hi=hourIndexNow(wx);
+    const fs=flyScore(wx,hi);
+    currentData={wx,sites,hi,lat,lon};
+
+    // Kopf
+    $('#placeName').textContent=place.name;
+    const parts=[place.admin1,place.country].filter(Boolean);
+    $('#placeWhere').textContent=`${parts.join(', ')} · ${lat.toFixed(3)}, ${lon.toFixed(3)}${place.elevation?` · ${Math.round(place.elevation)} m`:''}`;
+    const ut=new Date(wx.current.time);
+    $('#updated').textContent=`Stand ${ut.toLocaleString('de-DE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})} Uhr`;
+
+    renderVerdict(fs);
+    renderMetrics(wx,hi);
+    renderCompass(wx,sites);
+    renderHours(wx,wx.daily);
+    renderSites(sites,wx);
+    renderMap(lat,lon,sites,wx,true);
+    renderEmbeds(lat,lon,place.name);
+
+    setStatus('');
+    $('#results').classList.add('show');
+    $('#results').scrollIntoView({behavior:'smooth',block:'start'});
+
+    // Schritt 2: ParaglidingEarth nachladen (Anreicherung: Startrichtungen, Höhe, Thermik).
+    // Läuft non-blocking, damit die Seite sofort nutzbar ist.
+    setStatus('<span class="spinner"></span> Lade Detail-Daten (Startrichtungen, Thermik-Flags)…');
+    const pge=await getParaglidingEarth(lat,lon);
+    if(currentData.lat!==lat||currentData.lon!==lon) return; // inzwischen neue Suche
+    if(pge && pge.length){
+      sites=mergeSites(pge,osm,lat,lon);
+      currentData.sites=sites;
+      renderCompass(wx,sites);
+      renderSites(sites,wx);
+      renderMap(lat,lon,sites,wx,false);
+      setStatus('');
+    }else{
+      setStatus('<span style="color:var(--muted2)">Detail-Datenbank gerade nicht erreichbar – Startplätze stammen aus OpenStreetMap. Erneut suchen lädt evtl. mehr Details.</span>');
+      setTimeout(()=>{ if($('#status').textContent.includes('Detail-Datenbank')) setStatus(''); },7000);
+    }
+  }catch(err){
+    console.error(err);
+    setStatus(`<span style="color:var(--bad)">Fehler beim Laden: ${err.message}. Bitte erneut versuchen.</span>`);
+  }
+}
+
+/* ---------- Geo-Auswahl ---------- */
+function closeGeo(){ $('#geoList').style.display='none'; $('#geoList').innerHTML=''; }
+function showGeo(results){
+  const el=$('#geoList');
+  el.innerHTML=results.map((r,i)=>{
+    const meta=[r.admin1,r.country].filter(Boolean).join(', ');
+    return `<button data-i="${i}"><span style="font-size:16px">📍</span>
+      <span><b>${r.name}</b> <span class="meta">${meta}${r.elevation?` · ${Math.round(r.elevation)} m`:''}</span></span></button>`;
+  }).join('');
+  el.style.display='block';
+  el.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>run(results[+b.dataset.i])));
+}
+
+async function handleSearch(name){
+  if(!name.trim()) return;
+  setStatus(`<span class="spinner"></span> Suche „${name}“…`);
+  try{
+    const res=await geocode(name);
+    if(!res.length){ setStatus(`<span style="color:var(--mid)">Kein Ort „${name}“ gefunden. Tippfehler? Versuch eine größere Stadt in der Nähe.</span>`); return; }
+    setStatus('');
+    if(res.length===1) return run(res[0]);
+    showGeo(res);      // mehrere Treffer -> Auswahl zeigen
+  }catch(e){ setStatus(`<span style="color:var(--bad)">Suche fehlgeschlagen: ${e.message}</span>`); }
+}
+
+$('#searchForm').addEventListener('submit',e=>{ e.preventDefault(); handleSearch($('#q').value); });
+$('#examples').addEventListener('click',e=>{ if(e.target.classList.contains('chip')){ $('#q').value=e.target.textContent; handleSearch(e.target.textContent); }});
+document.addEventListener('click',e=>{ if(!e.target.closest('.searchbar')) closeGeo(); });
+window.openSite=openSite; window.closeModal=closeModal;
+
+// Deep-Link ?ort=
+const qp=new URLSearchParams(location.search).get('ort');
+if(qp){ $('#q').value=qp; handleSearch(qp); }
+</script>
+</body>
+</html>
