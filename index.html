@@ -81,6 +81,8 @@
   .btn{border:none;cursor:pointer;font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#04121f;background:linear-gradient(120deg,var(--sky),var(--teal));border-radius:13px;padding:12px 22px;transition:transform .15s, box-shadow .2s;white-space:nowrap}
   .btn:hover{transform:translateY(-1px);box-shadow:0 10px 24px -8px rgba(45,212,191,.6)}
   .btn:active{transform:translateY(0)}
+  .btn-outline{border:1px solid var(--stroke-strong);cursor:pointer;font-family:'Space Grotesk';font-weight:600;font-size:13px;color:var(--text);background:rgba(148,163,184,.08);border-radius:11px;padding:9px 16px;transition:.15s;white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
+  .btn-outline:hover{background:rgba(56,189,248,.12);border-color:var(--stroke-strong)}
   .examples{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px}
   .chip{cursor:pointer;font-size:13px;color:var(--muted);background:rgba(148,163,184,0.08);border:1px solid var(--stroke);padding:6px 13px;border-radius:999px;transition:.15s}
   .chip:hover{color:var(--text);border-color:var(--stroke-strong);background:rgba(148,163,184,0.14)}
@@ -231,6 +233,23 @@
 
   .empty{color:var(--muted);text-align:center;padding:30px;font-size:15px}
   .src-tag{font-size:10px;padding:1px 6px;border-radius:5px;background:rgba(148,163,184,.12);color:var(--muted2);vertical-align:middle}
+
+  /* Export */
+  @media print{
+    .aurora,.searchbar,.examples,header.hero>.logo,header.hero h1,header.hero>.sub,
+    #status,.geo-list,.overlay,#exportBtn,#webcamSection{display:none !important}
+    body{background:#fff !important;color:#111827 !important}
+    .wrap{max-width:100%;padding:0 6px}
+    .card{background:#fff !important;border:1px solid #d8dee8 !important;box-shadow:none !important;backdrop-filter:none !important}
+    .metric,.hour,.dbox{background:#f8fafc !important;border:1px solid #e2e8f0 !important}
+    h1,h2,h3,h4,.place-head h2,.verdict-label{color:#0f172a !important}
+    .sub,.where,.k,.note,.updated,.metric .u,.hour .t,.hour .gu,.rk{color:#475569 !important}
+    .card,.pill,.badge,.dirtag{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    #map{height:320px}
+    .site{break-inside:avoid}
+    .disclaimer{background:#fff !important;border-color:#e2e8f0 !important;color:#7f1d1d !important}
+    .disclaimer b{color:#111827 !important}
+  }
 </style>
 </head>
 <body>
@@ -269,7 +288,10 @@
         <h2 id="placeName"></h2>
         <div class="where" id="placeWhere"></div>
       </div>
-      <div class="updated" id="updated"></div>
+      <div style="text-align:right">
+        <div class="updated" id="updated"></div>
+        <button class="btn-outline" id="exportBtn" type="button" style="margin-top:9px">📄 Als PDF exportieren</button>
+      </div>
     </div>
 
     <div class="grid cols-main">
@@ -310,12 +332,14 @@
     <div class="site-grid" id="siteGrid"></div>
 
     <!-- live map / webcams -->
-    <div class="section-title"><span class="ic">🪟</span> Webcams & Live-Windkarte</div>
-    <div class="card" style="padding:6px">
-      <div class="embed-wrap"><iframe id="windyFrame" title="Windkarte" loading="lazy"></iframe></div>
+    <div id="webcamSection">
+      <div class="section-title"><span class="ic">🪟</span> Webcams & Live-Windkarte</div>
+      <div class="card" style="padding:6px">
+        <div class="embed-wrap"><iframe id="windyFrame" title="Windkarte" loading="lazy"></iframe></div>
+      </div>
+      <div class="cam-links" id="camLinks"></div>
+      <div class="note-box">Live-Webcam-Bilder direkt einzubetten erfordert einen kostenpflichtigen API-Schlüssel. Die Buttons springen direkt zu den Webcams in der Nähe deiner Koordinaten – die Windkarte oben hat einen eigenen Webcam-Layer (Symbol oben rechts).</div>
     </div>
-    <div class="cam-links" id="camLinks"></div>
-    <div class="note-box">Live-Webcam-Bilder direkt einzubetten erfordert einen kostenpflichtigen API-Schlüssel. Die Buttons springen direkt zu den Webcams in der Nähe deiner Koordinaten – die Windkarte oben hat einen eigenen Webcam-Layer (Symbol oben rechts).</div>
 
     <div class="disclaimer">
       <b>⚠️ Sicherheitshinweis:</b> Dieses Tool ist eine Entscheidungshilfe, keine Flugfreigabe. Die Daten sind automatisierte Schätzungen aus öffentlichen Modellen und ersetzen <b>keinen</b> offiziellen Wetter-/Bergwetterbericht, keine Föhndiagnose, keine Luftraum-/NOTAM-Prüfung und keine Beurteilung vor Ort. Fliege nur im Rahmen deiner Ausbildung, deiner Lizenz und der lokalen Regeln. Im Zweifel: am Boden bleiben.
@@ -948,6 +972,19 @@ async function handleSearch(name){
     showGeo(res);      // mehrere Treffer -> Auswahl zeigen
   }catch(e){ setStatus(`<span style="color:var(--bad)">Suche fehlgeschlagen: ${e.message}</span>`); }
 }
+
+/* ---------- PDF-Export (Browser-Druckdialog: "Als PDF speichern") ---------- */
+let printTitle=document.title;
+$('#exportBtn').addEventListener('click',()=>window.print());
+window.addEventListener('beforeprint',()=>{
+  printTitle=document.title;
+  if(currentData){
+    const name=$('#placeName').textContent||'Flugwetter';
+    const date=new Date().toLocaleDateString('de-DE');
+    document.title=`Flugwetter ${name} ${date}`;
+  }
+});
+window.addEventListener('afterprint',()=>{ document.title=printTitle; });
 
 $('#searchForm').addEventListener('submit',e=>{ e.preventDefault(); handleSearch($('#q').value); });
 $('#examples').addEventListener('click',e=>{ if(e.target.classList.contains('chip')){ $('#q').value=e.target.textContent; handleSearch(e.target.textContent); }});
