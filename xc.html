@@ -151,6 +151,8 @@
   .leaflet-tooltip{background:var(--card-solid);color:var(--text);border:1px solid var(--stroke-strong);border-radius:9px;font-size:12px;box-shadow:var(--shadow)}
   .leaflet-tooltip:before{display:none}
 
+  #kk7warn{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:1000;max-width:88%;background:rgba(30,22,8,0.92);border:1px solid rgba(251,191,36,0.45);color:#fbd38d;border-radius:12px;padding:8px 14px;font-size:12.5px;box-shadow:var(--shadow);text-align:center}
+
   .section-title{font-family:'Space Grotesk';font-size:20px;font-weight:700;margin:34px 0 14px;display:flex;align-items:center;gap:10px}
   .howto{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
   .howto .step{background:var(--card);border:1px solid var(--stroke);border-radius:16px;padding:16px 18px}
@@ -244,7 +246,7 @@
     </div>
 
     <!-- map -->
-    <div class="card map-card"><div id="map"></div></div>
+    <div class="card map-card"><div id="map"></div><div id="kk7warn" style="display:none">⚠️ <b>thermal.kk7.ch</b> ist von hier gerade nicht erreichbar – Server offline oder deine IP wurde wegen vieler Anfragen kurzzeitig gesperrt. Meist hilft: ein paar Minuten warten und neu laden.</div></div>
   </div>
 
   <div class="section-title">🧭 So funktioniert’s</div>
@@ -280,14 +282,34 @@ const $ = id => document.getElementById(id);
 
 /* ---------- Karte ---------- */
 const map = L.map('map', {zoomControl:true, worldCopyJump:true}).setView([47.47, 10.7], 10);
-const baseTopo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {maxZoom:17, attribution:'© OpenStreetMap, SRTM | © OpenTopoMap (CC-BY-SA)'});
-const baseDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {maxZoom:19, attribution:'© OpenStreetMap © CARTO'});
-const baseSat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:18, attribution:'© Esri'});
+/* Platzhalter für fehlgeschlagene Kacheln (statt schwarzer Löcher) */
+const errTile = fill => `data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="256" height="256"%3E%3Crect width="256" height="256" fill="%23${fill}"/%3E%3C/svg%3E`;
+const baseTopo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {maxZoom:17, errorTileUrl:errTile('d8dde3'), attribution:'© OpenStreetMap, SRTM | © OpenTopoMap (CC-BY-SA)'});
+const baseDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {maxZoom:19, errorTileUrl:errTile('11182a'), attribution:'© OpenStreetMap © CARTO'});
+const baseSat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:18, errorTileUrl:errTile('11182a'), attribution:'© Esri'});
 baseTopo.addTo(map);
 
 const kk7Attr = '<a href="https://thermal.kk7.ch" target="_blank">thermal.kk7.ch</a> (CC BY-NC-SA)';
 const skyLayer   = L.tileLayer(kk7Url('skyways_all_all'),  {tms:true, maxNativeZoom:13, maxZoom:17, opacity:0.8, attribution:kk7Attr}).addTo(map);
 const thermLayer = L.tileLayer(kk7Url('thermals_all_all'), {tms:true, maxNativeZoom:12, maxZoom:17, opacity:0.75, attribution:kk7Attr});
+
+/* Warnbanner: "tileerror" feuert auch bei abgebrochenen Requests (schneller
+   Kartenschwenk). Deshalb ab 6 Fehlern in Folge ein aktiver Mini-Check –
+   nur wenn auch der scheitert, ist der Server wirklich nicht erreichbar. */
+let kk7Fails=0, kk7Checking=false;
+const kk7Err=async ()=>{
+  if(++kk7Fails<6 || kk7Checking) return;
+  kk7Checking=true;
+  try{
+    const r=await fetch(`https://thermal.kk7.ch/tiles/skyways_all_all/6/33/41.png?src=${encodeURIComponent(KK7_SRC)}`,{cache:'no-store'});
+    if(!r.ok) throw 0;
+    kk7Fails=0;  // erreichbar – Fehler waren nur Abbrüche
+  }catch(e){ $('kk7warn').style.display='block'; }
+  kk7Checking=false;
+};
+const kk7Ok=()=>{ kk7Fails=0; $('kk7warn').style.display='none'; };
+skyLayer.on('tileerror',kk7Err);  skyLayer.on('tileload',kk7Ok);
+thermLayer.on('tileerror',kk7Err); thermLayer.on('tileload',kk7Ok);
 
 const sitesLayer   = L.layerGroup().addTo(map);
 const hotspotLayer = L.layerGroup().addTo(map);
@@ -552,17 +574,26 @@ async function loadGrid(layer, bounds, zoom, targetCells, onProgress){
   const pw=tw*256, ph=th*256;
   const cvs=document.createElement('canvas'); cvs.width=pw; cvs.height=ph;
   const ctx=cvs.getContext('2d',{willReadFrequently:true});
-  let done=0; const total=tw*th;
-  const jobs=[];
+  let done=0, okTiles=0, failTiles=0; const total=tw*th;
+  const tasks=[];
   for(let tx=x0;tx<=x1;tx++) for(let ty=y0;ty<=y1;ty++){
-    const tms=n-1-ty;
+    const tms=n-1-ty, px=(tx-x0)*256, py=(ty-y0)*256;
     const url=`https://thermal.kk7.ch/tiles/${layer}/${z}/${tx}/${tms}.png?src=${encodeURIComponent(KK7_SRC)}`;
-    jobs.push(fetch(url).then(r=>r.ok?r.blob():null).then(bl=>bl?createImageBitmap(bl):null)
-      .then(bm=>{ if(bm) ctx.drawImage(bm,(tx-x0)*256,(ty-y0)*256); })
-      .catch(()=>{})
-      .finally(()=>{ done++; if(onProgress&&done%8===0) onProgress(done/total); }));
+    tasks.push(async ()=>{
+      try{
+        const r=await fetch(url);
+        const bl=r.ok?await r.blob():null;
+        const bm=bl?await createImageBitmap(bl):null;
+        if(bm){ ctx.drawImage(bm,px,py); okTiles++; } else failTiles++;
+      }catch(e){ failTiles++; }
+      done++; if(onProgress&&done%8===0) onProgress(done/total);
+    });
   }
-  await Promise.all(jobs);
+  /* max. 8 Kacheln parallel – große Bursts wertet der kk7-Server als
+     Scraping und sperrt die IP (Cache-Treffer bleiben trotzdem schnell) */
+  let ti=0;
+  const worker=async ()=>{ while(ti<tasks.length) await tasks[ti++](); };
+  await Promise.all(Array.from({length:8}, ()=>worker()));
   const img=ctx.getImageData(0,0,pw,ph).data;
   const F=Math.max(1, Math.ceil(Math.sqrt((pw*ph)/targetCells)));
   const W=Math.ceil(pw/F), H=Math.ceil(ph/F);
@@ -579,7 +610,7 @@ async function loadGrid(layer, bounds, zoom, targetCells, onProgress){
       if(v>grid[gi]) grid[gi]=v;  // Max-Pooling erhält dünne Linien
     }
   }
-  return {grid, W, H, F, z, originX:x0*256, originY:y0*256};
+  return {grid, W, H, F, z, originX:x0*256, originY:y0*256, okTiles, failTiles};
 }
 const g2ll=(G,gx,gy)=>({lat:gy2lat(G.originY+(gy+0.5)*G.F, G.z), lon:gx2lon(G.originX+(gx+0.5)*G.F, G.z)});
 const ll2g=(G,lat,lon)=>({x:Math.round((lon2gx(lon,G.z)-G.originX)/G.F), y:Math.round((lat2gy(lat,G.z)-G.originY)/G.F)});
@@ -713,6 +744,12 @@ async function computeRoute(){
     while(z>8 && tileCount(z)>150) z--;
 
     const G=await loadGrid('skyways_all_all', bounds, z, 1.6e6, p=>setStatus(`<span class="spinner"></span>Lade Flugkorridore … ${Math.round(p*100)} %`));
+    if(G.okTiles===0){
+      $('kk7warn').style.display='block';
+      setStatus('⚠️ thermal.kk7.ch ist gerade nicht erreichbar (Server offline oder IP kurzzeitig gesperrt) – ein paar Minuten warten und nochmal versuchen.');
+      state.routing=false; $('routeBtn').disabled=false;
+      return;
+    }
     setStatus('<span class="spinner"></span>Berechne beste Route …');
     await new Promise(r=>setTimeout(r,30)); // UI atmen lassen
 
@@ -767,6 +804,7 @@ $('routeBtn').onclick=computeRoute;
 async function findHotspots(bounds, z, latlngs){
   hotspotLayer.clearLayers();
   const G=await loadGrid('thermals_all_all', bounds, z, 0.7e6);
+  if(G.okTiles===0) return;
   /* Route in Grid-Koordinaten abtasten */
   const samples=[];
   for(const [la,lo] of latlngs){ const c=ll2g(G,la,lo); samples.push(c); }
