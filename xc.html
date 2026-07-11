@@ -277,7 +277,15 @@
 const KK7_SRC = 'https://lukas0276.github.io/flugwetter/';
 /* Thermik-Symbol: aufsteigende Wärmelinien */
 const THERM_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M7 19c-1.6-2 1.6-3.6 0-5.8"/><path d="M12 20.5c-1.8-2.4 1.8-4.2 0-7s1.8-4.6 0-7"/><path d="M17 19c-1.6-2 1.6-3.6 0-5.8"/></svg>';
-const kk7Url = layer => `https://thermal.kk7.ch/tiles/${layer}/{z}/{x}/{y}.png?src=${encodeURIComponent(KK7_SRC)}`;
+/* Fallback: kk7 sperrt IPs bei zu vielen Anfragen ("connection refused").
+   Dann laufen die Kacheln über den wsrv.nl-Bildproxy (cached, CORS offen). */
+let kk7Proxy = false;
+const kk7Url = layer => kk7Proxy
+  ? `https://wsrv.nl/?url=thermal.kk7.ch/tiles/${layer}/{z}/{x}/{y}.png%3Fsrc%3Dlukas0276.github.io`
+  : `https://thermal.kk7.ch/tiles/${layer}/{z}/{x}/{y}.png?src=${encodeURIComponent(KK7_SRC)}`;
+const kk7TileRaw = (layer,z,x,y,viaProxy=kk7Proxy) => viaProxy
+  ? `https://wsrv.nl/?url=thermal.kk7.ch/tiles/${layer}/${z}/${x}/${y}.png%3Fsrc%3Dlukas0276.github.io`
+  : `https://thermal.kk7.ch/tiles/${layer}/${z}/${x}/${y}.png?src=${encodeURIComponent(KK7_SRC)}`;
 const $ = id => document.getElementById(id);
 
 /* ---------- Karte ---------- */
@@ -293,23 +301,43 @@ const kk7Attr = '<a href="https://thermal.kk7.ch" target="_blank">thermal.kk7.ch
 const skyLayer   = L.tileLayer(kk7Url('skyways_all_all'),  {tms:true, maxNativeZoom:13, maxZoom:17, opacity:0.8, attribution:kk7Attr}).addTo(map);
 const thermLayer = L.tileLayer(kk7Url('thermals_all_all'), {tms:true, maxNativeZoom:12, maxZoom:17, opacity:0.75, attribution:kk7Attr});
 
-/* Warnbanner: "tileerror" feuert auch bei abgebrochenen Requests (schneller
-   Kartenschwenk). Deshalb ab 6 Fehlern in Folge ein aktiver Mini-Check –
-   nur wenn auch der scheitert, ist der Server wirklich nicht erreichbar. */
+/* Erreichbarkeit: Direktweg testen, sonst auf wsrv.nl-Proxy umschalten.
+   "tileerror" feuert auch bei abgebrochenen Requests (schneller Karten-
+   schwenk), deshalb erst ab 6 Fehlern in Folge aktiv prüfen. */
+function enableKk7Proxy(){
+  if(kk7Proxy) return;
+  kk7Proxy=true;
+  skyLayer.setUrl(kk7Url('skyways_all_all'));
+  thermLayer.setUrl(kk7Url('thermals_all_all'));
+  console.info('kk7 direkt blockiert – Kacheln laufen jetzt über wsrv.nl');
+}
+async function kk7DirectOk(){
+  try{
+    const r=await fetch(`https://thermal.kk7.ch/tiles/skyways_all_all/6/33/41.png?src=${encodeURIComponent(KK7_SRC)}`,{cache:'no-store',signal:AbortSignal.timeout(6000)});
+    return r.ok;
+  }catch(e){ return false; }
+}
+async function kk7TryProxy(){
+  try{
+    const r=await fetch('https://wsrv.nl/?url=thermal.kk7.ch/tiles/skyways_all_all/6/33/41.png%3Fsrc%3Dlukas0276.github.io',{cache:'no-store',signal:AbortSignal.timeout(9000)});
+    if(r.ok){ enableKk7Proxy(); return true; }
+  }catch(e){}
+  return false;
+}
 let kk7Fails=0, kk7Checking=false;
 const kk7Err=async ()=>{
   if(++kk7Fails<6 || kk7Checking) return;
   kk7Checking=true;
-  try{
-    const r=await fetch(`https://thermal.kk7.ch/tiles/skyways_all_all/6/33/41.png?src=${encodeURIComponent(KK7_SRC)}`,{cache:'no-store'});
-    if(!r.ok) throw 0;
-    kk7Fails=0;  // erreichbar – Fehler waren nur Abbrüche
-  }catch(e){ $('kk7warn').style.display='block'; }
+  if(await kk7DirectOk() && !kk7Proxy) kk7Fails=0;
+  else if(await kk7TryProxy()){ kk7Fails=0; $('kk7warn').style.display='none'; }
+  else $('kk7warn').style.display='block';
   kk7Checking=false;
 };
 const kk7Ok=()=>{ kk7Fails=0; $('kk7warn').style.display='none'; };
 skyLayer.on('tileerror',kk7Err);  skyLayer.on('tileload',kk7Ok);
 thermLayer.on('tileerror',kk7Err); thermLayer.on('tileload',kk7Ok);
+/* Beim Start einmal proaktiv prüfen, damit die Heatmap sofort da ist */
+(async ()=>{ if(!await kk7DirectOk()) await kk7TryProxy(); })();
 
 const sitesLayer   = L.layerGroup().addTo(map);
 const hotspotLayer = L.layerGroup().addTo(map);
@@ -577,23 +605,31 @@ async function loadGrid(layer, bounds, zoom, targetCells, onProgress){
   let done=0, okTiles=0, failTiles=0; const total=tw*th;
   const tasks=[];
   for(let tx=x0;tx<=x1;tx++) for(let ty=y0;ty<=y1;ty++){
-    const tms=n-1-ty, px=(tx-x0)*256, py=(ty-y0)*256;
-    const url=`https://thermal.kk7.ch/tiles/${layer}/${z}/${tx}/${tms}.png?src=${encodeURIComponent(KK7_SRC)}`;
+    const tms=n-1-ty, px=(tx-x0)*256, py=(ty-y0)*256, _tx=tx;
     tasks.push(async ()=>{
-      try{
+      const draw=async url=>{
         const r=await fetch(url);
         const bl=r.ok?await r.blob():null;
         const bm=bl?await createImageBitmap(bl):null;
-        if(bm){ ctx.drawImage(bm,px,py); okTiles++; } else failTiles++;
-      }catch(e){ failTiles++; }
-      done++; if(onProgress&&done%8===0) onProgress(done/total);
+        if(!bm) throw 0;
+        ctx.drawImage(bm,px,py);
+      };
+      try{ await draw(kk7TileRaw(layer,z,_tx,tms)); okTiles++; }
+      catch(e1){
+        /* zweiter Versuch über den jeweils anderen Weg (direkt ↔ Proxy) –
+           hilft, wenn der kk7-Server flattert oder ein Pfad gesperrt ist */
+        await new Promise(r=>setTimeout(r,700));
+        try{ await draw(kk7TileRaw(layer,z,_tx,tms,!kk7Proxy)); okTiles++; }
+        catch(e2){ failTiles++; }
+      }
+      done++; if(onProgress&&done%6===0) onProgress(done/total);
     });
   }
-  /* max. 8 Kacheln parallel – große Bursts wertet der kk7-Server als
+  /* max. 6 Kacheln parallel – große Bursts wertet der kk7-Server als
      Scraping und sperrt die IP (Cache-Treffer bleiben trotzdem schnell) */
   let ti=0;
   const worker=async ()=>{ while(ti<tasks.length) await tasks[ti++](); };
-  await Promise.all(Array.from({length:8}, ()=>worker()));
+  await Promise.all(Array.from({length:6}, ()=>worker()));
   const img=ctx.getImageData(0,0,pw,ph).data;
   const F=Math.max(1, Math.ceil(Math.sqrt((pw*ph)/targetCells)));
   const W=Math.ceil(pw/F), H=Math.ceil(ph/F);
@@ -743,10 +779,13 @@ async function computeRoute(){
     };
     while(z>8 && tileCount(z)>150) z--;
 
-    const G=await loadGrid('skyways_all_all', bounds, z, 1.6e6, p=>setStatus(`<span class="spinner"></span>Lade Flugkorridore … ${Math.round(p*100)} %`));
+    let G=await loadGrid('skyways_all_all', bounds, z, 1.6e6, p=>setStatus(`<span class="spinner"></span>Lade Flugkorridore … ${Math.round(p*100)} %`));
+    if(G.okTiles===0 && !kk7Proxy && await kk7TryProxy()){
+      G=await loadGrid('skyways_all_all', bounds, z, 1.6e6, p=>setStatus(`<span class="spinner"></span>Direktweg blockiert – lade über Ersatzweg … ${Math.round(p*100)} %`));
+    }
     if(G.okTiles===0){
       $('kk7warn').style.display='block';
-      setStatus('⚠️ thermal.kk7.ch ist gerade nicht erreichbar (Server offline oder IP kurzzeitig gesperrt) – ein paar Minuten warten und nochmal versuchen.');
+      setStatus('⚠️ thermal.kk7.ch ist gerade nicht erreichbar (auch über den Ersatzweg) – ein paar Minuten warten und nochmal versuchen.');
       state.routing=false; $('routeBtn').disabled=false;
       return;
     }
@@ -788,7 +827,7 @@ async function computeRoute(){
 
     /* Thermik-Hotspots an der Route */
     setStatus('<span class="spinner"></span>Suche Thermik-Hotspots …');
-    await findHotspots(bounds, Math.min(z,12), latlngs);
+    await findHotspots(bounds, Math.min(z,11), latlngs);
     setStatus(coverage>=60
       ? `✅ Route folgt zu ${coverage} % bekannten Flugkorridoren.`
       : `⚠️ Nur ${coverage} % der Route liegen auf bekannten Korridoren – Strecke ist wenig geflogen.`);
