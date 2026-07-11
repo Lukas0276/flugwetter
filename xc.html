@@ -146,7 +146,8 @@
   .ptpin span{transform:rotate(45deg)}
   .ptpin.s{background:linear-gradient(135deg,var(--sky),var(--teal))}
   .ptpin.z{background:linear-gradient(135deg,var(--violet),var(--indigo));color:#fff}
-  .hotspot{width:100%;height:100%;border-radius:50%;background:rgba(9,13,26,0.88);border:2px solid #fb923c;box-shadow:0 0 10px rgba(251,146,60,.9),0 2px 8px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;font-size:12px}
+  .hotspot{width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fdba74,#f97316 55%,#c2410c);border:2px solid rgba(255,255,255,.92);box-shadow:0 0 12px rgba(249,115,22,.85),0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center}
+  .hotspot svg{width:64%;height:64%}
   .leaflet-tooltip{background:var(--card-solid);color:var(--text);border:1px solid var(--stroke-strong);border-radius:9px;font-size:12px;box-shadow:var(--shadow)}
   .leaflet-tooltip:before{display:none}
 
@@ -226,7 +227,7 @@
         <h3>Karten-Ebenen</h3>
         <div class="opt"><input type="checkbox" id="cbSky" checked/><span class="lab">Flugkorridore (Skyways)</span><input type="range" id="skyOpacity" min="0" max="100" value="80" title="Deckkraft"/></div>
         <div class="opt"><input type="checkbox" id="cbThermMap"/><span class="lab">Thermik-Heatmap</span></div>
-        <div class="opt"><input type="checkbox" id="cbHot" checked/><span class="lab">🔥 Hotspots an der Route</span></div>
+        <div class="opt"><input type="checkbox" id="cbHot" checked/><span class="lab">Thermik-Hotspots an der Route</span></div>
         <div class="opt"><input type="checkbox" id="cbSites" checked/><span class="lab">Start- & Landeplätze</span></div>
       </div>
 
@@ -237,7 +238,7 @@
         <div class="legend-items">
           <div><span class="lg-ic" style="color:#4fc3f7">▲</span><b>Startplatz</b> (Paragliding Earth / OSM)</div>
           <div><span class="lg-ic" style="color:#34d399">■</span><b>Landeplatz</b> (OSM)</div>
-          <div><span class="lg-ic">🔥</span><b>Thermik-Hotspot</b> nahe der Route</div>
+          <div><span class="lg-ic"><span class="hotspot" style="width:16px;height:16px;display:inline-flex"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M7 19c-1.6-2 1.6-3.6 0-5.8"/><path d="M12 20.5c-1.8-2.4 1.8-4.2 0-7s1.8-4.6 0-7"/><path d="M17 19c-1.6-2 1.6-3.6 0-5.8"/></svg></span></span><b>Thermik-Hotspot</b> nahe der Route</div>
         </div>
       </div>
     </div>
@@ -272,6 +273,8 @@
    Paragliding Earth + OSM (Gelände), Open-Meteo (Geocoding)
    ========================================================= */
 const KK7_SRC = 'https://lukas0276.github.io/flugwetter/';
+/* Thermik-Symbol: aufsteigende Wärmelinien */
+const THERM_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M7 19c-1.6-2 1.6-3.6 0-5.8"/><path d="M12 20.5c-1.8-2.4 1.8-4.2 0-7s1.8-4.6 0-7"/><path d="M17 19c-1.6-2 1.6-3.6 0-5.8"/></svg>';
 const kk7Url = layer => `https://thermal.kk7.ch/tiles/${layer}/{z}/{x}/{y}.png?src=${encodeURIComponent(KK7_SRC)}`;
 const $ = id => document.getElementById(id);
 
@@ -796,7 +799,7 @@ async function findHotspots(bounds, z, latlngs){
   for(const c of picked){
     const q=g2ll(G,c.x,c.y);
     const size=20+Math.round(c.v*10);
-    L.marker([q.lat,q.lon],{icon:L.divIcon({className:'', html:`<div class="hotspot">🔥</div>`, iconSize:[size,size], iconAnchor:[size/2,size/2]}), interactive:true, zIndexOffset:400})
+    L.marker([q.lat,q.lon],{icon:L.divIcon({className:'', html:`<div class="hotspot">${THERM_SVG}</div>`, iconSize:[size,size], iconAnchor:[size/2,size/2]}), interactive:true, zIndexOffset:400})
       .bindTooltip(`Thermik-Hotspot · Stärke ${Math.round(c.v*100)} %`)
       .addTo(hotspotLayer);
   }
