@@ -4,6 +4,9 @@ Eine schlanke Web-App für Gleitschirmflieger: **Ort eingeben → sofort sehen, 
 
 👉 **Live:** https://lukas0276.github.io/flugwetter/
 
+## Unterseiten
+- 🗺️ **[XC Planer](https://lukas0276.github.io/flugwetter/xc.html)** (`xc.html`) – Startplatz & Ziel wählen, beste Streckenflug-Route entlang der meistgeflogenen XC-Korridore ([thermal.kk7.ch](https://thermal.kk7.ch) Skyways, CC BY-NC-SA) inkl. Thermik-Hotspots an der Route. Kein API-Key nötig.
+
 ## Features
 - **Flugwetter-Score** (0–100) mit Begründung
 - **Aktuelle Bedingungen:** Temperatur, Wind & Richtung, Böen, Thermik (CAPE), Föhnrisiko, Luftfeuchte, Nullgradgrenze

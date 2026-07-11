@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>XC Planer · Streckenflug-Routen auf einen Blick</title>
+<meta name="description" content="Startplatz und Ziel wählen – der XC Planer findet die beste Streckenflug-Route entlang der meistgeflogenen Korridore, inkl. Thermik-Hotspots." />
+<meta name="theme-color" content="#0b1120" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="XC Planer · Beste Streckenflug-Route finden" />
+<meta property="og:description" content="Start & Ziel wählen → beste Route entlang der meistgeflogenen XC-Korridore, mit Thermik-Hotspots auf der Karte." />
+<meta property="og:image" content="https://lukas0276.github.io/flugwetter/og-image.png" />
+<meta property="og:url" content="https://lukas0276.github.io/flugwetter/xc.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<style>
+  :root{
+    --bg:#060912; --bg2:#0b1120;
+    --card:rgba(20,28,46,0.55); --card-solid:#121a2e;
+    --stroke:rgba(148,163,184,0.16); --stroke-strong:rgba(148,163,184,0.30);
+    --text:#eaf0fb; --muted:#95a3bd; --muted2:#64748b;
+    --sky:#38bdf8; --teal:#2dd4bf; --violet:#a78bfa; --indigo:#6366f1;
+    --good:#34d399; --mid:#fbbf24; --bad:#fb7185; --unknown:#94a3b8;
+    --shadow:0 18px 50px -12px rgba(0,0,0,0.65);
+    --radius:20px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+  .aurora{position:fixed;inset:0;z-index:-2;overflow:hidden;background:
+     radial-gradient(1200px 700px at 80% -10%, rgba(56,189,248,0.10), transparent 60%),
+     radial-gradient(1000px 600px at 0% 10%, rgba(167,139,250,0.10), transparent 55%),
+     linear-gradient(180deg,#060912 0%, #070c18 40%, #060912 100%);}
+  .blob{position:absolute;border-radius:50%;filter:blur(80px);opacity:.45;animation:float 22s ease-in-out infinite}
+  .blob.b1{width:520px;height:520px;background:radial-gradient(circle,#0ea5e9,transparent 65%);top:-160px;right:-120px}
+  .blob.b2{width:480px;height:480px;background:radial-gradient(circle,#8b5cf6,transparent 65%);bottom:-180px;left:-120px;animation-delay:-7s}
+  .blob.b3{width:420px;height:420px;background:radial-gradient(circle,#14b8a6,transparent 65%);top:40%;left:55%;animation-delay:-13s}
+  @keyframes float{0%,100%{transform:translate(0,0) scale(1)}33%{transform:translate(40px,-30px) scale(1.08)}66%{transform:translate(-30px,25px) scale(.95)}}
+
+  .wrap{max-width:1280px;margin:0 auto;padding:0 20px 70px}
+
+  .navpill{position:fixed;top:16px;right:18px;z-index:1200;display:inline-flex;align-items:center;gap:7px;font-family:'Space Grotesk';font-weight:600;font-size:13.5px;color:var(--text);text-decoration:none;background:var(--card-solid);border:1px solid var(--stroke-strong);padding:8px 15px;border-radius:999px;box-shadow:var(--shadow);transition:.15s}
+  .navpill:hover{border-color:var(--sky);transform:translateY(-1px)}
+
+  header.hero{text-align:center;padding:42px 0 20px}
+  .logo{display:inline-flex;align-items:center;gap:12px;font-family:'Space Grotesk';font-weight:700;letter-spacing:.5px;font-size:15px;color:var(--muted);text-transform:uppercase}
+  .logo .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,var(--sky),var(--teal));box-shadow:0 0 14px var(--sky)}
+  h1{font-family:'Space Grotesk';font-weight:700;font-size:clamp(32px,5.4vw,54px);line-height:1.05;margin:16px 0 10px;letter-spacing:-1px}
+  h1 .grad{background:linear-gradient(110deg,var(--sky),var(--teal) 45%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted);max-width:640px;margin:0 auto;font-size:16.5px}
+  .examples{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:18px}
+  .chip{cursor:pointer;font-size:13px;color:var(--muted);background:rgba(148,163,184,0.08);border:1px solid var(--stroke);padding:6px 13px;border-radius:999px;transition:.15s}
+  .chip:hover{color:var(--text);border-color:var(--stroke-strong);background:rgba(148,163,184,0.14)}
+
+  .grid{display:grid;gap:18px}
+  .cols-main{grid-template-columns:370px 1fr;align-items:start}
+  @media(max-width:920px){.cols-main{grid-template-columns:1fr}}
+
+  .card{background:var(--card);border:1px solid var(--stroke);border-radius:var(--radius);backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+  .card.pad{padding:20px}
+  .card h3{font-family:'Space Grotesk';font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:0 0 14px;font-weight:600}
+
+  /* point inputs */
+  .pt-row{position:relative;margin-bottom:12px}
+  .pt-box{display:flex;align-items:center;gap:9px;background:rgba(148,163,184,0.06);border:1px solid var(--stroke-strong);border-radius:14px;padding:9px 11px}
+  .pt-box:focus-within{border-color:var(--sky)}
+  .pt-badge{flex:none;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:700;font-size:13px;color:#04121f}
+  .pt-badge.s{background:linear-gradient(135deg,var(--sky),var(--teal))}
+  .pt-badge.z{background:linear-gradient(135deg,var(--violet),var(--indigo));color:#fff}
+  .pt-box input{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--text);font-size:15px;font-family:inherit}
+  .pt-box input::placeholder{color:var(--muted2)}
+  .iconbtn{flex:none;background:transparent;border:1px solid var(--stroke);border-radius:9px;color:var(--muted);cursor:pointer;padding:5px 8px;font-size:13px;line-height:1;transition:.15s}
+  .iconbtn:hover{color:var(--text);border-color:var(--stroke-strong)}
+  .iconbtn.active{color:#04121f;background:linear-gradient(120deg,var(--sky),var(--teal));border-color:transparent}
+  .geo-list{position:absolute;left:0;right:0;top:100%;margin-top:6px;background:var(--card-solid);border:1px solid var(--stroke-strong);border-radius:14px;overflow:hidden;z-index:1100;box-shadow:var(--shadow)}
+  .geo-list button{display:flex;width:100%;text-align:left;gap:10px;align-items:center;background:transparent;border:none;color:var(--text);padding:10px 14px;cursor:pointer;font-family:inherit;font-size:14.5px;border-bottom:1px solid var(--stroke)}
+  .geo-list button:last-child{border-bottom:none}
+  .geo-list button:hover{background:rgba(56,189,248,0.10)}
+  .geo-list .meta{color:var(--muted);font-size:12.5px;margin-left:auto;flex:none}
+
+  .row-mid{display:flex;justify-content:center;margin:-6px 0 6px}
+  .swap{background:transparent;border:1px solid var(--stroke);color:var(--muted);border-radius:999px;width:30px;height:30px;cursor:pointer;font-size:14px;line-height:1;transition:.15s}
+  .swap:hover{color:var(--text);border-color:var(--stroke-strong);transform:rotate(180deg)}
+
+  .btn{border:none;cursor:pointer;font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#04121f;background:linear-gradient(120deg,var(--sky),var(--teal));border-radius:13px;padding:12px 22px;transition:transform .15s, box-shadow .2s;white-space:nowrap;width:100%}
+  .btn:hover{transform:translateY(-1px);box-shadow:0 10px 24px -8px rgba(45,212,191,.6)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+  .btn.ghost{background:transparent;border:1px solid var(--stroke-strong);color:var(--text);width:auto;padding:8px 14px;font-size:13.5px}
+
+  #routeStatus{color:var(--muted);font-size:13.5px;min-height:20px;margin-top:10px;text-align:center}
+  .spinner{display:inline-block;width:13px;height:13px;border:2px solid rgba(148,163,184,.3);border-top-color:var(--sky);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:7px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* stats */
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stat{background:rgba(148,163,184,0.06);border:1px solid var(--stroke);border-radius:14px;padding:12px 14px}
+  .stat .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.8px}
+  .stat .v{font-family:'Space Grotesk';font-size:22px;font-weight:600;margin-top:4px;line-height:1.1}
+  .stat .v small{font-size:13px;color:var(--muted);font-weight:500}
+  .covbar{margin-top:12px}
+  .covbar .lbl{display:flex;justify-content:space-between;font-size:12.5px;color:var(--muted);margin-bottom:6px}
+  .covbar .track{height:8px;border-radius:99px;background:rgba(148,163,184,0.12);overflow:hidden}
+  .covbar .fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--sky),var(--teal))}
+
+  /* layer options */
+  .opt{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:14.5px}
+  .opt input[type=checkbox]{accent-color:var(--teal);width:16px;height:16px}
+  .opt .lab{flex:1}
+  input[type=range]{width:110px;accent-color:var(--sky)}
+  .legend-grad{height:10px;border-radius:99px;background:linear-gradient(90deg,rgba(0,0,180,.55),#0060e0,#00c8c8,#7ce040,#f0d000,#ff8e00,#e00000);margin:6px 0 4px}
+  .legend-row{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}
+  .legend-items{margin-top:12px;display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--muted)}
+  .legend-items b{color:var(--text);font-weight:600}
+  .lg-ic{display:inline-flex;width:20px;justify-content:center;margin-right:6px}
+
+  /* map */
+  #map{height:660px;border-radius:var(--radius);z-index:1}
+  @media(max-width:920px){#map{height:520px}}
+  .map-card{overflow:hidden;position:relative}
+  #map.picking{cursor:crosshair}
+  .leaflet-container{background:#0a0f1c;font-family:'Inter',system-ui,sans-serif}
+  .leaflet-popup-content-wrapper{background:var(--card-solid);color:var(--text);border:1px solid var(--stroke-strong);border-radius:14px;box-shadow:var(--shadow)}
+  .leaflet-popup-tip{background:var(--card-solid);border:1px solid var(--stroke-strong)}
+  .leaflet-popup-content{margin:12px 14px;font-size:13.5px;line-height:1.45}
+  .leaflet-container a.leaflet-popup-close-button{color:var(--muted)}
+  .pop b{font-family:'Space Grotesk';font-size:14.5px}
+  .pop .meta{color:var(--muted);font-size:12.5px;margin:3px 0 8px}
+  .pop .actions{display:flex;gap:7px;margin-top:8px}
+  .pop .pbtn{flex:1;border:none;cursor:pointer;font-family:'Space Grotesk';font-weight:600;font-size:12.5px;border-radius:9px;padding:7px 8px;transition:.15s}
+  .pop .pbtn.s{background:linear-gradient(120deg,var(--sky),var(--teal));color:#04121f}
+  .pop .pbtn.z{background:linear-gradient(120deg,var(--violet),var(--indigo));color:#fff}
+  .pop .pbtn:hover{transform:translateY(-1px)}
+  .leaflet-control-attribution{background:rgba(6,9,18,.75)!important;color:var(--muted2)!important;font-size:10px!important}
+  .leaflet-control-attribution a{color:var(--muted)!important}
+  .leaflet-control-layers{background:var(--card-solid)!important;color:var(--text)!important;border:1px solid var(--stroke-strong)!important;border-radius:12px!important}
+  .leaflet-control-layers label{color:var(--text)}
+  .leaflet-bar a{background:var(--card-solid)!important;color:var(--text)!important;border-color:var(--stroke)!important}
+
+  /* markers */
+  .mk{display:flex;align-items:center;justify-content:center;font-size:13px;line-height:1;text-shadow:0 1px 4px rgba(0,0,0,.9)}
+  .mk-t{color:#4fc3f7;font-size:15px}
+  .mk-l{color:#34d399;font-size:11px}
+  .ptpin{width:30px;height:30px;border-radius:50% 50% 50% 4px;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:700;font-size:14px;color:#04121f;box-shadow:0 4px 14px rgba(0,0,0,.6);border:2px solid rgba(255,255,255,.85)}
+  .ptpin span{transform:rotate(45deg)}
+  .ptpin.s{background:linear-gradient(135deg,var(--sky),var(--teal))}
+  .ptpin.z{background:linear-gradient(135deg,var(--violet),var(--indigo));color:#fff}
+  .hotspot{width:100%;height:100%;border-radius:50%;background:rgba(9,13,26,0.88);border:2px solid #fb923c;box-shadow:0 0 10px rgba(251,146,60,.9),0 2px 8px rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;font-size:12px}
+  .leaflet-tooltip{background:var(--card-solid);color:var(--text);border:1px solid var(--stroke-strong);border-radius:9px;font-size:12px;box-shadow:var(--shadow)}
+  .leaflet-tooltip:before{display:none}
+
+  .section-title{font-family:'Space Grotesk';font-size:20px;font-weight:700;margin:34px 0 14px;display:flex;align-items:center;gap:10px}
+  .howto{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+  .howto .step{background:var(--card);border:1px solid var(--stroke);border-radius:16px;padding:16px 18px}
+  .howto .n{font-family:'Space Grotesk';font-weight:700;color:var(--sky);font-size:13px;letter-spacing:1px}
+  .howto p{margin:6px 0 0;color:var(--muted);font-size:14px}
+
+  footer{margin-top:44px;color:var(--muted2);font-size:12.5px;text-align:center;line-height:1.7}
+  footer a{color:var(--muted)}
+  .warn{max-width:860px;margin:0 auto 10px;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);color:#fbd38d;border-radius:14px;padding:12px 16px;font-size:12.5px;text-align:left}
+</style>
+</head>
+<body>
+<div class="aurora"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+<a class="navpill" href="./index.html">🪂 Flugwetter-Check</a>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="logo"><span class="dot"></span> Thermik · XC Planer</div>
+    <h1>Wo fliegt man am besten <span class="grad">lang?</span></h1>
+    <p class="sub">Startplatz und Ziel wählen – der Planer legt die beste Route entlang der meistgeflogenen XC-Korridore (echte Flüge tausender Piloten) und zeigt dir die Thermik-Hotspots unterwegs.</p>
+    <div class="examples">
+      <span class="chip" data-preset="tegelberg-tannheim">Tegelberg → Tannheimer Tal</span>
+      <span class="chip" data-preset="neunerkoepfle-fuessen">Neunerköpfle → Füssen</span>
+      <span class="chip" data-preset="fiesch-interlaken">Fiesch → Interlaken</span>
+    </div>
+  </header>
+
+  <div class="grid cols-main">
+    <!-- left panel -->
+    <div class="grid" style="align-content:start">
+      <div class="card pad">
+        <h3>Route planen</h3>
+        <div class="pt-row">
+          <div class="pt-box">
+            <span class="pt-badge s">S</span>
+            <input id="inpStart" type="text" placeholder="Startplatz suchen …" autocomplete="off"/>
+            <button class="iconbtn" id="pickStart" title="Auf der Karte wählen">📍</button>
+          </div>
+          <div class="geo-list" id="listStart" style="display:none"></div>
+        </div>
+        <div class="row-mid"><button class="swap" id="swapBtn" title="Start und Ziel tauschen">⇅</button></div>
+        <div class="pt-row">
+          <div class="pt-box">
+            <span class="pt-badge z">Z</span>
+            <input id="inpZiel" type="text" placeholder="Ziel / Landeplatz suchen …" autocomplete="off"/>
+            <button class="iconbtn" id="pickZiel" title="Auf der Karte wählen">📍</button>
+          </div>
+          <div class="geo-list" id="listZiel" style="display:none"></div>
+        </div>
+        <button class="btn" id="routeBtn" disabled>Beste Route finden</button>
+        <div id="routeStatus">Tipp: Marker auf der Karte anklicken oder oben suchen.</div>
+      </div>
+
+      <div class="card pad" id="statsCard" style="display:none">
+        <h3>Deine Route</h3>
+        <div class="stats">
+          <div class="stat"><div class="k">Strecke</div><div class="v" id="stKm">–</div></div>
+          <div class="stat"><div class="k">Luftlinie</div><div class="v" id="stLuft">–</div></div>
+          <div class="stat"><div class="k">Umweg</div><div class="v" id="stUmweg">–</div></div>
+          <div class="stat"><div class="k">≈ Flugzeit*</div><div class="v" id="stZeit">–</div></div>
+        </div>
+        <div class="covbar">
+          <div class="lbl"><span>Route auf bekannten Flugkorridoren</span><span id="covPct">–</span></div>
+          <div class="track"><div class="fill" id="covFill" style="width:0%"></div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="btn ghost" id="shareBtn">🔗 Link kopieren</button>
+          <button class="btn ghost" id="clearBtn">✕ Zurücksetzen</button>
+        </div>
+        <div style="color:var(--muted2);font-size:11.5px;margin-top:10px">*bei ~22 km/h XC-Schnitt – grobe Orientierung</div>
+      </div>
+
+      <div class="card pad">
+        <h3>Karten-Ebenen</h3>
+        <div class="opt"><input type="checkbox" id="cbSky" checked/><span class="lab">Flugkorridore (Skyways)</span><input type="range" id="skyOpacity" min="0" max="100" value="80" title="Deckkraft"/></div>
+        <div class="opt"><input type="checkbox" id="cbThermMap"/><span class="lab">Thermik-Heatmap</span></div>
+        <div class="opt"><input type="checkbox" id="cbHot" checked/><span class="lab">🔥 Hotspots an der Route</span></div>
+        <div class="opt"><input type="checkbox" id="cbSites" checked/><span class="lab">Start- & Landeplätze</span></div>
+      </div>
+
+      <div class="card pad">
+        <h3>Legende</h3>
+        <div class="legend-grad"></div>
+        <div class="legend-row"><span>wenig geflogen</span><span>XC-Autobahn</span></div>
+        <div class="legend-items">
+          <div><span class="lg-ic" style="color:#4fc3f7">▲</span><b>Startplatz</b> (Paragliding Earth / OSM)</div>
+          <div><span class="lg-ic" style="color:#34d399">■</span><b>Landeplatz</b> (OSM)</div>
+          <div><span class="lg-ic">🔥</span><b>Thermik-Hotspot</b> nahe der Route</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- map -->
+    <div class="card map-card"><div id="map"></div></div>
+  </div>
+
+  <div class="section-title">🧭 So funktioniert’s</div>
+  <div class="howto">
+    <div class="step"><div class="n">1 · WÄHLEN</div><p>Startplatz und Ziel per Suche, Klick auf einen Marker oder direkt auf die Karte setzen.</p></div>
+    <div class="step"><div class="n">2 · RECHNEN</div><p>Der Planer liest die Skyways-Heatmap (Millionen echte GPX-Tracks) aus und sucht den Pfad mit der höchsten Track-Dichte zwischen Start und Ziel.</p></div>
+    <div class="step"><div class="n">3 · THERMIK</div><p>Entlang der Route werden die stärksten Thermik-Hotspots aus der kk7-Thermikkarte markiert – deine Tankstellen unterwegs.</p></div>
+    <div class="step"><div class="n">4 · FLIEGEN</div><p>Route mit dem 🔗-Button teilen, am Flugtag mit dem <a href="./index.html" style="color:var(--sky)">Flugwetter-Check</a> abgleichen – und Lufträume checken!</p></div>
+  </div>
+
+  <footer>
+    <div class="warn">⚠️ <b>Planungshilfe, keine Flugvorbereitung:</b> Die Route basiert allein auf historischen Flugspuren und kennt <b>keine Lufträume, Schutzgebiete, NOTAMs oder aktuelles Wetter</b>. Prüfe vor jedem Flug offizielle Luftraumdaten (z.&nbsp;B. ICAO-Karte, NOTAM) und das Wetter. Fliege nur im Rahmen deiner Ausbildung und der lokalen Regeln.</div>
+    Flugkorridore & Thermik: <a href="https://thermal.kk7.ch" target="_blank" rel="noopener">thermal.kk7.ch</a> von Michael von Känel (CC BY-NC-SA 4.0) ·
+    Startplätze: <a href="https://www.paraglidingearth.com" target="_blank" rel="noopener">Paragliding Earth</a> & <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ·
+    Geocoding: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> · Karte: OpenTopoMap / CARTO / Esri<br/>
+    Teil von <a href="./index.html">Kann ich hier fliegen? · Flugwetter-Check</a>
+  </footer>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+'use strict';
+/* =========================================================
+   XC Planer – beste Streckenflug-Route entlang der Skyways
+   Datenquellen: thermal.kk7.ch (Tracks/Thermik, CC BY-NC-SA),
+   Paragliding Earth + OSM (Gelände), Open-Meteo (Geocoding)
+   ========================================================= */
+const KK7_SRC = 'https://lukas0276.github.io/flugwetter/';
+const kk7Url = layer => `https://thermal.kk7.ch/tiles/${layer}/{z}/{x}/{y}.png?src=${encodeURIComponent(KK7_SRC)}`;
+const $ = id => document.getElementById(id);
+
+/* ---------- Karte ---------- */
+const map = L.map('map', {zoomControl:true, worldCopyJump:true}).setView([47.47, 10.7], 10);
+const baseTopo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {maxZoom:17, attribution:'© OpenStreetMap, SRTM | © OpenTopoMap (CC-BY-SA)'});
+const baseDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {maxZoom:19, attribution:'© OpenStreetMap © CARTO'});
+const baseSat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:18, attribution:'© Esri'});
+baseTopo.addTo(map);
+
+const kk7Attr = '<a href="https://thermal.kk7.ch" target="_blank">thermal.kk7.ch</a> (CC BY-NC-SA)';
+const skyLayer   = L.tileLayer(kk7Url('skyways_all_all'),  {tms:true, maxNativeZoom:13, maxZoom:17, opacity:0.8, attribution:kk7Attr}).addTo(map);
+const thermLayer = L.tileLayer(kk7Url('thermals_all_all'), {tms:true, maxNativeZoom:12, maxZoom:17, opacity:0.75, attribution:kk7Attr});
+
+const sitesLayer   = L.layerGroup().addTo(map);
+const hotspotLayer = L.layerGroup().addTo(map);
+const routeLayer   = L.layerGroup().addTo(map);
+
+L.control.layers({'Topo':baseTopo,'Dunkel':baseDark,'Satellit':baseSat}, null, {position:'topleft', collapsed:true}).addTo(map);
+L.control.scale({imperial:false}).addTo(map);
+
+/* Ebenen-Optionen */
+$('cbSky').onchange = e => e.target.checked ? skyLayer.addTo(map) : map.removeLayer(skyLayer);
+$('skyOpacity').oninput = e => skyLayer.setOpacity(e.target.value/100);
+$('cbThermMap').onchange = e => e.target.checked ? thermLayer.addTo(map) : map.removeLayer(thermLayer);
+$('cbHot').onchange = e => e.target.checked ? hotspotLayer.addTo(map) : map.removeLayer(hotspotLayer);
+$('cbSites').onchange = e => e.target.checked ? sitesLayer.addTo(map) : map.removeLayer(sitesLayer);
+
+/* ---------- Geo-Helfer ---------- */
+const R = 6371;
+function havKm(a, b){
+  const dLa=(b.lat-a.lat)*Math.PI/180, dLo=(b.lon-a.lon)*Math.PI/180;
+  const la1=a.lat*Math.PI/180, la2=b.lat*Math.PI/180;
+  const h=Math.sin(dLa/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLo/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+/* WebMercator: globale Pixelkoordinaten bei Zoom z (256er-Kacheln) */
+const lon2gx = (lon,z) => (lon+180)/360 * 256*Math.pow(2,z);
+const lat2gy = (lat,z) => {
+  const s=Math.sin(lat*Math.PI/180);
+  return (0.5 - Math.log((1+s)/(1-s))/(4*Math.PI)) * 256*Math.pow(2,z);
+};
+const gx2lon = (x,z) => x/(256*Math.pow(2,z))*360 - 180;
+const gy2lat = (y,z) => {
+  const n=Math.PI - 2*Math.PI*y/(256*Math.pow(2,z));
+  return 180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n)));
+};
+
+/* ---------- Zustand ---------- */
+const state = {start:null, ziel:null, picking:null, routing:false};
+
+const pinIcon = role => L.divIcon({className:'', html:`<div class="ptpin ${role==='start'?'s':'z'}"><span>${role==='start'?'S':'Z'}</span></div>`, iconSize:[30,30], iconAnchor:[6,28]});
+let startMarker=null, zielMarker=null;
+
+function setPoint(role, lat, lon, name){
+  const pt={lat, lon, name: name || `${lat.toFixed(4)}, ${lon.toFixed(4)}`};
+  state[role]=pt;
+  $(role==='start'?'inpStart':'inpZiel').value = pt.name;
+  const icon=pinIcon(role);
+  if(role==='start'){
+    if(startMarker) startMarker.remove();
+    startMarker=L.marker([lat,lon],{icon, zIndexOffset:900}).addTo(map).bindTooltip('Start: '+pt.name);
+  } else {
+    if(zielMarker) zielMarker.remove();
+    zielMarker=L.marker([lat,lon],{icon, zIndexOffset:900}).addTo(map).bindTooltip('Ziel: '+pt.name);
+  }
+  map.closePopup();
+  $('routeBtn').disabled = !(state.start && state.ziel);
+  updateHash();
+  if(state.start && state.ziel) computeRoute();
+}
+window._setPt=(role,lat,lon,name)=>setPoint(role,lat,lon,decodeURIComponent(name));
+
+function clearRoute(keepPoints){
+  routeLayer.clearLayers(); hotspotLayer.clearLayers();
+  $('statsCard').style.display='none';
+  if(!keepPoints){
+    state.start=state.ziel=null;
+    if(startMarker){startMarker.remove();startMarker=null}
+    if(zielMarker){zielMarker.remove();zielMarker=null}
+    $('inpStart').value=''; $('inpZiel').value='';
+    $('routeBtn').disabled=true;
+    history.replaceState(null,'',location.pathname);
+    setStatus('Tipp: Marker auf der Karte anklicken oder oben suchen.');
+  }
+}
+$('clearBtn').onclick=()=>clearRoute(false);
+$('swapBtn').onclick=()=>{
+  if(!state.start && !state.ziel) return;
+  const s=state.start, z=state.ziel;
+  clearRoute(false);
+  if(z) setPoint('start', z.lat, z.lon, z.name);
+  if(s) setPoint('ziel', s.lat, s.lon, s.name);
+};
+
+/* Punkt-Auswahl auf der Karte */
+function armPick(role){
+  state.picking = state.picking===role ? null : role;
+  $('pickStart').classList.toggle('active', state.picking==='start');
+  $('pickZiel').classList.toggle('active', state.picking==='ziel');
+  map.getContainer().classList.toggle('picking', !!state.picking);
+}
+$('pickStart').onclick=()=>armPick('start');
+$('pickZiel').onclick=()=>armPick('ziel');
+
+map.on('click', e=>{
+  const {lat,lng}=e.latlng;
+  if(state.picking){
+    const r=state.picking; armPick(r&&null); state.picking=null;
+    $('pickStart').classList.remove('active'); $('pickZiel').classList.remove('active');
+    map.getContainer().classList.remove('picking');
+    setPoint(r, lat, lng, null);
+    return;
+  }
+  L.popup({closeButton:false})
+    .setLatLng(e.latlng)
+    .setContent(`<div class="pop"><b>Punkt setzen?</b><div class="meta">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
+      <div class="actions">
+        <button class="pbtn s" onclick="_setPt('start',${lat},${lng},null)">🛫 Start hier</button>
+        <button class="pbtn z" onclick="_setPt('ziel',${lat},${lng},null)">🛬 Ziel hier</button>
+      </div></div>`)
+    .openOn(map);
+});
+
+/* ---------- Start-/Landeplätze laden ---------- */
+const siteStore=new Map(); // key -> site
+let lastSiteFetch={lat:0, lon:0, z:0};
+
+function siteKey(s){ return `${s.lat.toFixed(4)}|${s.lon.toFixed(4)}`; }
+function nearExisting(s, maxKm){
+  for(const o of siteStore.values()) if(o.type===s.type && havKm(o,s)<maxKm) return true;
+  return false;
+}
+function addSite(s){
+  const k=siteKey(s);
+  if(siteStore.has(k)) return;
+  if(s.source==='osm' && s.type==='Startplatz' && nearExisting(s,0.18)) return;
+  if(s.source==='pge' && nearExisting(s,0.15)) return;
+  siteStore.set(k,s);
+  const isL=s.type==='Landeplatz';
+  const icon=L.divIcon({className:'', html:`<div class="mk ${isL?'mk-l':'mk-t'}">${isL?'■':'▲'}</div>`, iconSize:[18,18], iconAnchor:[9,9]});
+  const dirs=s.windDirs?`<div class="meta">Startrichtung: ${s.windDirs}</div>`:'';
+  const alt=s.alt?` · ${s.alt} m`:'';
+  L.marker([s.lat,s.lon],{icon})
+    .bindPopup(`<div class="pop"><b>${s.name}</b><div class="meta">${s.type}${alt}</div>${dirs}
+      <div class="actions">
+        <button class="pbtn s" onclick="_setPt('start',${s.lat},${s.lon},'${encodeURIComponent(s.name)}')">🛫 Als Start</button>
+        <button class="pbtn z" onclick="_setPt('ziel',${s.lat},${s.lon},'${encodeURIComponent(s.name)}')">🛬 Als Ziel</button>
+      </div></div>`)
+    .addTo(sitesLayer);
+}
+
+const DIRS=['N','NE','E','SE','S','SW','W','NW'];
+async function fetchPGE(lat,lon,distKm){
+  const target=`https://www.paraglidingearth.com/api/geojson/getAroundLatLngSites.php?lat=${lat.toFixed(4)}&lng=${lon.toFixed(4)}&distance=${Math.round(distKm)}&limit=150&style=detailled`;
+  const proxies=[
+    u=>({url:`https://cors-get-proxy.sirjosh.workers.dev/?url=${encodeURIComponent(u)}`,wrap:false}),
+    u=>({url:`https://proxy.cors.sh/${u}`,wrap:false}),
+    u=>({url:`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,wrap:false}),
+  ];
+  for(const mk of proxies){
+    try{
+      const {url}=mk(target);
+      const r=await fetch(url,{signal:AbortSignal.timeout(9000)});
+      if(!r.ok) continue;
+      const data=await r.json();
+      if(!data||!data.features) continue;
+      return data.features.map(f=>{
+        const p=f.properties||{}, c=f.geometry?.coordinates||[];
+        const place=(p.place||'').toLowerCase();
+        const type=(place.includes('landing')||place.includes('lande'))?'Landeplatz':'Startplatz';
+        const wd=DIRS.filter(k=>parseInt(p[k]||'0')>0).join(' ');
+        return {name:p.name||'Startplatz', lat:c[1], lon:c[0], type,
+          alt:p.takeoff_altitude?parseInt(p.takeoff_altitude):null, windDirs:wd||null, source:'pge'};
+      });
+    }catch(e){/* nächster Proxy */}
+  }
+  return [];
+}
+async function fetchOSM(bounds){
+  const bbox=`${bounds.getSouth().toFixed(3)},${bounds.getWest().toFixed(3)},${bounds.getNorth().toFixed(3)},${bounds.getEast().toFixed(3)}`;
+  const q=`[out:json][timeout:25];nwr["sport"="free_flying"](${bbox});out center tags 400;`;
+  try{
+    const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q),signal:AbortSignal.timeout(20000)});
+    const j=await r.json();
+    return (j.elements||[]).map(e=>{
+      const t=e.tags||{}, la=e.lat??e.center?.lat, lo=e.lon??e.center?.lon;
+      if(la==null||lo==null) return null;
+      const sv=(t['free_flying:site']||'').toLowerCase();
+      const isLand=t['free_flying:landing']==='yes'||sv.includes('landing')||/lande/i.test(t.name||'');
+      const isTake=t['free_flying:takeoff']==='yes'||sv.includes('takeoff')||t.paragliding==='takeoff';
+      let type='Startplatz';
+      if(isLand&&!isTake) type='Landeplatz';
+      return {name:t.name||(type==='Landeplatz'?'Landeplatz (unbenannt)':'Fluggelände (unbenannt)'),
+        lat:la, lon:lo, type, alt:t.ele?parseInt(t.ele):null, windDirs:null, source:'osm'};
+    }).filter(Boolean);
+  }catch(e){ return []; }
+}
+
+let siteTimer=null;
+async function loadSites(){
+  if(map.getZoom()<9 || !map.hasLayer(sitesLayer)) return;
+  const c=map.getCenter();
+  const moved=havKm({lat:c.lat,lon:c.lng},{lat:lastSiteFetch.lat,lon:lastSiteFetch.lon});
+  const b=map.getBounds();
+  const radKm=Math.min(80, havKm({lat:b.getSouth(),lon:b.getWest()},{lat:b.getNorth(),lon:b.getEast()})/2);
+  if(moved<radKm*0.4 && lastSiteFetch.z===map.getZoom() && siteStore.size) return;
+  lastSiteFetch={lat:c.lat, lon:c.lng, z:map.getZoom()};
+  const [pge,osm]=await Promise.all([fetchPGE(c.lat,c.lng,radKm), fetchOSM(b)]);
+  pge.forEach(addSite); osm.forEach(addSite);
+}
+map.on('moveend', ()=>{ clearTimeout(siteTimer); siteTimer=setTimeout(loadSites, 650); });
+loadSites();
+
+/* ---------- Suche (Orte + geladene Gelände) ---------- */
+function bindSearch(inpId, listId, role){
+  const inp=$(inpId), list=$(listId);
+  let t=null;
+  inp.addEventListener('input', ()=>{
+    clearTimeout(t);
+    const q=inp.value.trim();
+    if(q.length<2){ list.style.display='none'; return; }
+    t=setTimeout(async ()=>{
+      const ql=q.toLowerCase();
+      const siteHits=[...siteStore.values()].filter(s=>s.name.toLowerCase().includes(ql)).slice(0,4);
+      let geo=[];
+      try{
+        const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=de&format=json`);
+        geo=(await r.json()).results||[];
+      }catch(e){}
+      const rows=[
+        ...siteHits.map(s=>`<button data-lat="${s.lat}" data-lon="${s.lon}" data-name="${encodeURIComponent(s.name)}">🪂 ${s.name}<span class="meta">${s.type}${s.alt?' · '+s.alt+' m':''}</span></button>`),
+        ...geo.map(g=>`<button data-lat="${g.latitude}" data-lon="${g.longitude}" data-name="${encodeURIComponent(g.name)}">📍 ${g.name}<span class="meta">${[g.admin1,g.country_code].filter(Boolean).join(', ')}</span></button>`)
+      ];
+      if(!rows.length){ list.style.display='none'; return; }
+      list.innerHTML=rows.join('');
+      list.style.display='block';
+      list.querySelectorAll('button').forEach(btn=>{
+        btn.onclick=()=>{
+          list.style.display='none';
+          setPoint(role, parseFloat(btn.dataset.lat), parseFloat(btn.dataset.lon), decodeURIComponent(btn.dataset.name));
+          map.setView([parseFloat(btn.dataset.lat), parseFloat(btn.dataset.lon)], Math.max(map.getZoom(),11));
+        };
+      });
+    }, 350);
+  });
+  document.addEventListener('click', e=>{ if(!list.contains(e.target)&&e.target!==inp) list.style.display='none'; });
+}
+bindSearch('inpStart','listStart','start');
+bindSearch('inpZiel','listZiel','ziel');
+
+/* ---------- kk7-Raster laden & Intensität dekodieren ---------- */
+/* Farbskala (Jet): blau = wenig, rot = viel. Schwache Spuren über Alpha. */
+function decodeIntensity(r,g,b,a){
+  if(a<10) return 0;
+  const mx=Math.max(r,g,b), mn=Math.min(r,g,b), c=mx-mn;
+  let rank;
+  if(c<20) rank=0.15;
+  else{
+    let h;
+    if(mx===r) h=((g-b)/c+6)%6; else if(mx===g) h=(b-r)/c+2; else h=(r-g)/c+4;
+    h*=60;
+    rank = h>300 ? 1 : Math.max(0, Math.min(1, 1-h/240));
+  }
+  return (a/255)*(0.18+0.82*rank);
+}
+
+/* Lädt Kacheln eines kk7-Layers für eine BBox, liefert Downsample-Grid */
+async function loadGrid(layer, bounds, zoom, targetCells, onProgress){
+  const z=zoom, n=Math.pow(2,z);
+  let x0=Math.floor(lon2gx(bounds.getWest(),z)/256), x1=Math.floor(lon2gx(bounds.getEast(),z)/256);
+  let y0=Math.floor(lat2gy(bounds.getNorth(),z)/256), y1=Math.floor(lat2gy(bounds.getSouth(),z)/256);
+  x0=Math.max(0,x0); y0=Math.max(0,y0); x1=Math.min(n-1,x1); y1=Math.min(n-1,y1);
+  const tw=x1-x0+1, th=y1-y0+1;
+  const pw=tw*256, ph=th*256;
+  const cvs=document.createElement('canvas'); cvs.width=pw; cvs.height=ph;
+  const ctx=cvs.getContext('2d',{willReadFrequently:true});
+  let done=0; const total=tw*th;
+  const jobs=[];
+  for(let tx=x0;tx<=x1;tx++) for(let ty=y0;ty<=y1;ty++){
+    const tms=n-1-ty;
+    const url=`https://thermal.kk7.ch/tiles/${layer}/${z}/${tx}/${tms}.png?src=${encodeURIComponent(KK7_SRC)}`;
+    jobs.push(fetch(url).then(r=>r.ok?r.blob():null).then(bl=>bl?createImageBitmap(bl):null)
+      .then(bm=>{ if(bm) ctx.drawImage(bm,(tx-x0)*256,(ty-y0)*256); })
+      .catch(()=>{})
+      .finally(()=>{ done++; if(onProgress&&done%8===0) onProgress(done/total); }));
+  }
+  await Promise.all(jobs);
+  const img=ctx.getImageData(0,0,pw,ph).data;
+  const F=Math.max(1, Math.ceil(Math.sqrt((pw*ph)/targetCells)));
+  const W=Math.ceil(pw/F), H=Math.ceil(ph/F);
+  const grid=new Float32Array(W*H);
+  for(let py=0;py<ph;py++){
+    const gy=(py/F)|0;
+    let rowOff=py*pw;
+    for(let px=0;px<pw;px++){
+      const o=(rowOff+px)*4;
+      const a=img[o+3];
+      if(a<10) continue;
+      const v=decodeIntensity(img[o],img[o+1],img[o+2],a);
+      const gi=gy*W+((px/F)|0);
+      if(v>grid[gi]) grid[gi]=v;  // Max-Pooling erhält dünne Linien
+    }
+  }
+  return {grid, W, H, F, z, originX:x0*256, originY:y0*256};
+}
+const g2ll=(G,gx,gy)=>({lat:gy2lat(G.originY+(gy+0.5)*G.F, G.z), lon:gx2lon(G.originX+(gx+0.5)*G.F, G.z)});
+const ll2g=(G,lat,lon)=>({x:Math.round((lon2gx(lon,G.z)-G.originX)/G.F), y:Math.round((lat2gy(lat,G.z)-G.originY)/G.F)});
+
+/* ---------- A*: Pfad minimaler Kosten durch die Track-Dichte ---------- */
+function astar(G, s, e){
+  const {grid,W,H}=G;
+  const sN=s.y*W+s.x, eN=e.y*W+e.x;
+  const gScore=new Float32Array(W*H).fill(Infinity);
+  const parent=new Int32Array(W*H).fill(-1);
+  const closed=new Uint8Array(W*H);
+  // Binärer Heap
+  let hCap=1<<16, hIdx=new Int32Array(hCap), hF=new Float64Array(hCap), hLen=0;
+  const push=(i,f)=>{
+    if(hLen===hCap){ hCap*=2; const ni=new Int32Array(hCap); ni.set(hIdx); hIdx=ni; const nf=new Float64Array(hCap); nf.set(hF); hF=nf; }
+    let c=hLen++; hIdx[c]=i; hF[c]=f;
+    while(c>0){ const p=(c-1)>>1; if(hF[p]<=hF[c]) break; [hF[p],hF[c]]=[hF[c],hF[p]]; [hIdx[p],hIdx[c]]=[hIdx[c],hIdx[p]]; c=p; }
+  };
+  const pop=()=>{
+    const top=hIdx[0]; hLen--;
+    if(hLen>0){ hIdx[0]=hIdx[hLen]; hF[0]=hF[hLen];
+      let c=0;
+      for(;;){ const l=2*c+1, r=l+1; let m=c;
+        if(l<hLen&&hF[l]<hF[m]) m=l;
+        if(r<hLen&&hF[r]<hF[m]) m=r;
+        if(m===c) break;
+        [hF[m],hF[c]]=[hF[c],hF[m]]; [hIdx[m],hIdx[c]]=[hIdx[c],hIdx[m]]; c=m;
+      }
+    }
+    return top;
+  };
+  const SQ2=Math.SQRT2;
+  const dx=[1,-1,0,0,1,1,-1,-1], dy=[0,0,1,-1,1,-1,1,-1], dl=[1,1,1,1,SQ2,SQ2,SQ2,SQ2];
+  const ex=e.x, ey=e.y;
+  const K=14, HW=1.12; // Kostenfaktor abseits der Korridore, Heuristik-Gewicht
+  const heur=(x,y)=>Math.hypot(x-ex,y-ey)*HW;
+  gScore[sN]=0; push(sN, heur(s.x,s.y));
+  let guard=0, maxIter=W*H*3;
+  while(hLen>0){
+    if(++guard>maxIter) return null;
+    const cur=pop();
+    if(cur===eN) break;
+    if(closed[cur]) continue;
+    closed[cur]=1;
+    const cx=cur%W, cy=(cur/W)|0, cg=gScore[cur];
+    for(let k=0;k<8;k++){
+      const nx=cx+dx[k], ny=cy+dy[k];
+      if(nx<0||ny<0||nx>=W||ny>=H) continue;
+      const ni=ny*W+nx;
+      if(closed[ni]) continue;
+      const I=grid[ni];
+      const step=dl[k]*(1+K*(1-I)*(1-I));
+      const ng=cg+step;
+      if(ng<gScore[ni]){ gScore[ni]=ng; parent[ni]=cur; push(ni, ng+heur(nx,ny)); }
+    }
+  }
+  if(parent[eN]===-1 && eN!==sN) return null;
+  const path=[]; let c=eN;
+  while(c!==-1){ path.push({x:c%W, y:(c/W)|0}); c=parent[c]; }
+  path.reverse();
+  return path;
+}
+
+/* Vereinfachen (Douglas-Peucker) + Glätten (Chaikin) */
+function simplify(pts, tol){
+  if(pts.length<3) return pts;
+  const keep=new Uint8Array(pts.length); keep[0]=keep[pts.length-1]=1;
+  const stack=[[0,pts.length-1]];
+  while(stack.length){
+    const [a,b]=stack.pop();
+    let maxD=0, maxI=-1;
+    const ax=pts[a].x, ay=pts[a].y, bx=pts[b].x, by=pts[b].y;
+    const dx=bx-ax, dy=by-ay, len2=dx*dx+dy*dy||1;
+    for(let i=a+1;i<b;i++){
+      const t=Math.max(0,Math.min(1,((pts[i].x-ax)*dx+(pts[i].y-ay)*dy)/len2));
+      const d=Math.hypot(pts[i].x-(ax+t*dx), pts[i].y-(ay+t*dy));
+      if(d>maxD){ maxD=d; maxI=i; }
+    }
+    if(maxD>tol){ keep[maxI]=1; stack.push([a,maxI],[maxI,b]); }
+  }
+  return pts.filter((_,i)=>keep[i]);
+}
+function chaikin(pts, it){
+  for(let n=0;n<it;n++){
+    if(pts.length<3) return pts;
+    const out=[pts[0]];
+    for(let i=0;i<pts.length-1;i++){
+      const p=pts[i], q=pts[i+1];
+      out.push({x:p.x*0.75+q.x*0.25, y:p.y*0.75+q.y*0.25},{x:p.x*0.25+q.x*0.75, y:p.y*0.25+q.y*0.75});
+    }
+    out.push(pts[pts.length-1]);
+    pts=out;
+  }
+  return pts;
+}
+
+/* ---------- Routen-Berechnung ---------- */
+function setStatus(html){ $('routeStatus').innerHTML=html; }
+function fmtTime(h){
+  const m=Math.round(h*60);
+  return m<60 ? `${m} min` : `${Math.floor(m/60)} h ${String(m%60).padStart(2,'0')}`;
+}
+
+async function computeRoute(){
+  if(!state.start||!state.ziel||state.routing) return;
+  const s=state.start, e=state.ziel;
+  const distKm=havKm(s,e);
+  if(distKm<0.5){ setStatus('Start und Ziel sind (fast) identisch.'); return; }
+  state.routing=true;
+  $('routeBtn').disabled=true;
+  routeLayer.clearLayers(); hotspotLayer.clearLayers();
+  try{
+    setStatus('<span class="spinner"></span>Lade Flugkorridore …');
+    /* BBox mit Rand */
+    const padKm=Math.max(8, distKm*0.35);
+    const padLat=padKm/111, midLat=(s.lat+e.lat)/2;
+    const padLon=padKm/(111*Math.cos(midLat*Math.PI/180));
+    const bounds=L.latLngBounds([
+      [Math.min(s.lat,e.lat)-padLat, Math.min(s.lon,e.lon)-padLon],
+      [Math.max(s.lat,e.lat)+padLat, Math.max(s.lon,e.lon)+padLon]
+    ]);
+    /* Zoom: Zellgröße an Streckenlänge anpassen, Kachelzahl deckeln */
+    const mpp=Math.max(28, Math.min(230, distKm*1000/900));
+    let z=Math.round(Math.log2(156543.03*Math.cos(midLat*Math.PI/180)/mpp));
+    z=Math.max(8, Math.min(12, z));
+    const tileCount=zz=>{
+      const tw=Math.floor(lon2gx(bounds.getEast(),zz)/256)-Math.floor(lon2gx(bounds.getWest(),zz)/256)+1;
+      const th=Math.floor(lat2gy(bounds.getSouth(),zz)/256)-Math.floor(lat2gy(bounds.getNorth(),zz)/256)+1;
+      return tw*th;
+    };
+    while(z>8 && tileCount(z)>150) z--;
+
+    const G=await loadGrid('skyways_all_all', bounds, z, 1.6e6, p=>setStatus(`<span class="spinner"></span>Lade Flugkorridore … ${Math.round(p*100)} %`));
+    setStatus('<span class="spinner"></span>Berechne beste Route …');
+    await new Promise(r=>setTimeout(r,30)); // UI atmen lassen
+
+    const sc=ll2g(G,s.lat,s.lon), ec=ll2g(G,e.lat,e.lon);
+    const clamp=(c)=>({x:Math.max(0,Math.min(G.W-1,c.x)), y:Math.max(0,Math.min(G.H-1,c.y))});
+    const path=astar(G, clamp(sc), clamp(ec));
+    if(!path){ setStatus('Keine Route gefunden – versuch andere Punkte.'); state.routing=false; $('routeBtn').disabled=false; return; }
+
+    /* Abdeckung entlang des Rohpfads */
+    let onTrack=0;
+    for(const p of path) if(G.grid[p.y*G.W+p.x]>0.10) onTrack++;
+    const coverage=Math.round(100*onTrack/path.length);
+
+    const smooth=chaikin(simplify(path,1.4),2);
+    const latlngs=smooth.map(p=>{const q=g2ll(G,p.x,p.y); return [q.lat,q.lon];});
+    latlngs[0]=[s.lat,s.lon]; latlngs[latlngs.length-1]=[e.lat,e.lon];
+
+    let routeKm=0;
+    for(let i=1;i<latlngs.length;i++)
+      routeKm+=havKm({lat:latlngs[i-1][0],lon:latlngs[i-1][1]},{lat:latlngs[i][0],lon:latlngs[i][1]});
+
+    L.polyline(latlngs,{color:'#04121f',weight:10,opacity:0.75}).addTo(routeLayer);
+    L.polyline(latlngs,{color:'#ffffff',weight:4,opacity:1}).addTo(routeLayer)
+      .bindTooltip(`Beste Route · ${routeKm.toFixed(1)} km`,{sticky:true});
+    L.polyline(latlngs,{color:'#2dd4bf',weight:4,opacity:1,dashArray:'6 14'}).addTo(routeLayer);
+
+    /* Statistik */
+    $('stKm').innerHTML=`${routeKm.toFixed(1)} <small>km</small>`;
+    $('stLuft').innerHTML=`${distKm.toFixed(1)} <small>km</small>`;
+    $('stUmweg').innerHTML=`+${Math.max(0,Math.round((routeKm/distKm-1)*100))} <small>%</small>`;
+    $('stZeit').textContent=fmtTime(routeKm/22);
+    $('covPct').textContent=coverage+' %';
+    $('covFill').style.width=coverage+'%';
+    $('statsCard').style.display='block';
+    map.fitBounds(L.latLngBounds(latlngs).pad(0.12));
+
+    /* Thermik-Hotspots an der Route */
+    setStatus('<span class="spinner"></span>Suche Thermik-Hotspots …');
+    await findHotspots(bounds, Math.min(z,12), latlngs);
+    setStatus(coverage>=60
+      ? `✅ Route folgt zu ${coverage} % bekannten Flugkorridoren.`
+      : `⚠️ Nur ${coverage} % der Route liegen auf bekannten Korridoren – Strecke ist wenig geflogen.`);
+  }catch(err){
+    console.error(err);
+    setStatus('Fehler bei der Berechnung – bitte nochmal versuchen.');
+  }
+  state.routing=false;
+  $('routeBtn').disabled=false;
+}
+$('routeBtn').onclick=computeRoute;
+
+async function findHotspots(bounds, z, latlngs){
+  hotspotLayer.clearLayers();
+  const G=await loadGrid('thermals_all_all', bounds, z, 0.7e6);
+  /* Route in Grid-Koordinaten abtasten */
+  const samples=[];
+  for(const [la,lo] of latlngs){ const c=ll2g(G,la,lo); samples.push(c); }
+  const mPerCell=156543.03*Math.cos(bounds.getCenter().lat*Math.PI/180)/Math.pow(2,G.z)*G.F;
+  const corridorCells=2600/mPerCell;       // ±2,6 km um die Route
+  const nmsCells=1400/mPerCell;            // Mindestabstand zwischen Hotspots
+  /* lokale Maxima */
+  const cand=[];
+  const {grid,W,H}=G;
+  for(let y=2;y<H-2;y++) for(let x=2;x<W-2;x++){
+    const v=grid[y*W+x];
+    if(v<0.32) continue;
+    let isMax=true;
+    for(let j=-2;j<=2&&isMax;j++) for(let i=-2;i<=2;i++){
+      if(i===0&&j===0) continue;
+      if(grid[(y+j)*W+(x+i)]>v){ isMax=false; break; }
+    }
+    if(isMax) cand.push({x,y,v});
+  }
+  cand.sort((a,b)=>b.v-a.v);
+  const picked=[];
+  for(const c of cand.slice(0,600)){
+    let dMin=Infinity;
+    for(const p of samples){ const d=Math.hypot(c.x-p.x,c.y-p.y); if(d<dMin) dMin=d; if(dMin<corridorCells) break; }
+    if(dMin>corridorCells) continue;
+    if(picked.some(p=>Math.hypot(c.x-p.x,c.y-p.y)<nmsCells)) continue;
+    picked.push(c);
+    if(picked.length>=14) break;
+  }
+  for(const c of picked){
+    const q=g2ll(G,c.x,c.y);
+    const size=20+Math.round(c.v*10);
+    L.marker([q.lat,q.lon],{icon:L.divIcon({className:'', html:`<div class="hotspot">🔥</div>`, iconSize:[size,size], iconAnchor:[size/2,size/2]}), interactive:true, zIndexOffset:400})
+      .bindTooltip(`Thermik-Hotspot · Stärke ${Math.round(c.v*100)} %`)
+      .addTo(hotspotLayer);
+  }
+}
+
+/* ---------- Teilen & URL-Parameter ---------- */
+function updateHash(){
+  if(!state.start&&!state.ziel) return;
+  const enc=p=>p?`${p.lat.toFixed(5)},${p.lon.toFixed(5)},${encodeURIComponent(p.name)}`:'';
+  const parts=[];
+  if(state.start) parts.push('s='+enc(state.start));
+  if(state.ziel) parts.push('z='+enc(state.ziel));
+  history.replaceState(null,'','#'+parts.join('&'));
+}
+$('shareBtn').onclick=async ()=>{
+  try{
+    await navigator.clipboard.writeText(location.href);
+    $('shareBtn').textContent='✅ Kopiert!';
+    setTimeout(()=>$('shareBtn').innerHTML='🔗 Link kopieren',1600);
+  }catch(e){ prompt('Link zum Teilen:', location.href); }
+};
+function parseHash(){
+  if(!location.hash) return false;
+  const p=new URLSearchParams(location.hash.slice(1));
+  let any=false;
+  for(const [key,role] of [['s','start'],['z','ziel']]){
+    const v=p.get(key);
+    if(!v) continue;
+    const [la,lo,...rest]=v.split(',');
+    const lat=parseFloat(la), lon=parseFloat(lo);
+    if(isFinite(lat)&&isFinite(lon)){ setPoint(role, lat, lon, rest.length?decodeURIComponent(rest.join(',')):null); any=true; }
+  }
+  return any;
+}
+
+/* ---------- Presets ---------- */
+const PRESETS={
+  'tegelberg-tannheim':  {s:[47.5411,10.7588,'Tegelberg'],          z:[47.4990,10.5163,'Tannheim (Tannheimer Tal)']},
+  'neunerkoepfle-fuessen':{s:[47.4825,10.5418,'Neunerköpfle'],      z:[47.5709,10.6980,'Füssen']},
+  'fiesch-interlaken':   {s:[46.4162,8.1122,'Fiescheralp'],         z:[46.6863,7.8632,'Interlaken']},
+};
+document.querySelectorAll('.chip[data-preset]').forEach(ch=>{
+  ch.onclick=()=>{
+    const p=PRESETS[ch.dataset.preset];
+    clearRoute(false);
+    setPoint('start', ...p.s);
+    setPoint('ziel', ...p.z);
+  };
+});
+
+/* Init aus URL */
+if(parseHash() && state.start && state.ziel){
+  map.fitBounds(L.latLngBounds([[state.start.lat,state.start.lon],[state.ziel.lat,state.ziel.lon]]).pad(0.25));
+}
+</script>
+</body>
+</html>
