@@ -148,6 +148,8 @@
   .ptpin.z{background:linear-gradient(135deg,var(--violet),var(--indigo));color:#fff}
   .hotspot{width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fdba74,#f97316 55%,#c2410c);border:2px solid rgba(255,255,255,.92);box-shadow:0 0 12px rgba(249,115,22,.85),0 2px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center}
   .hotspot svg{width:64%;height:64%}
+  /* Gelände-Modus: blaugrüne Marker, damit klar ist: kein echter Thermik-Nachweis */
+  .hotspot.terra{background:radial-gradient(circle at 35% 30%,#5eead4,#0d9488 55%,#115e59);box-shadow:0 0 12px rgba(45,212,191,.75),0 2px 6px rgba(0,0,0,.5)}
   .leaflet-tooltip{background:var(--card-solid);color:var(--text);border:1px solid var(--stroke-strong);border-radius:9px;font-size:12px;box-shadow:var(--shadow)}
   .leaflet-tooltip:before{display:none}
 
@@ -246,7 +248,7 @@
     </div>
 
     <!-- map -->
-    <div class="card map-card"><div id="map"></div><div id="kk7warn" style="display:none">⚠️ <b>thermal.kk7.ch</b> ist von hier gerade nicht erreichbar – Server offline oder deine IP wurde wegen vieler Anfragen kurzzeitig gesperrt. Meist hilft: ein paar Minuten warten und neu laden.</div></div>
+    <div class="card map-card"><div id="map"></div><div id="kk7warn" style="display:none">⚠️ <b>thermal.kk7.ch</b> (Flugkorridore & Thermik) ist gerade nicht erreichbar oder blockiert Anfragen – die Heatmap-Ebenen sind vorübergehend deaktiviert. Routen werden ersatzweise über eine <b>Gelände-Analyse</b> (Grate & Hangkanten aus Höhendaten) berechnet. Später neu laden, dann kommen die echten Flugkorridore zurück.</div></div>
   </div>
 
   <div class="section-title">🧭 So funktioniert’s</div>
@@ -261,7 +263,8 @@
     <div class="warn">⚠️ <b>Planungshilfe, keine Flugvorbereitung:</b> Die Route basiert allein auf historischen Flugspuren und kennt <b>keine Lufträume, Schutzgebiete, NOTAMs oder aktuelles Wetter</b>. Prüfe vor jedem Flug offizielle Luftraumdaten (z.&nbsp;B. ICAO-Karte, NOTAM) und das Wetter. Fliege nur im Rahmen deiner Ausbildung und der lokalen Regeln.</div>
     Flugkorridore & Thermik: <a href="https://thermal.kk7.ch" target="_blank" rel="noopener">thermal.kk7.ch</a> von Michael von Känel (CC BY-NC-SA 4.0) ·
     Startplätze: <a href="https://www.paraglidingearth.com" target="_blank" rel="noopener">Paragliding Earth</a> & <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> ·
-    Geocoding: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> · Karte: OpenTopoMap / CARTO / Esri<br/>
+    Geocoding: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> · Karte: OpenTopoMap / CARTO / Esri ·
+    Gelände-Fallback: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a> (Mapzen Terrarium, SRTM/NASA u.&nbsp;a.)<br/>
     Teil von <a href="./index.html">Kann ich hier fliegen? · Flugwetter-Check</a>
   </footer>
 </div>
@@ -311,33 +314,70 @@ function enableKk7Proxy(){
   thermLayer.setUrl(kk7Url('thermals_all_all'));
   console.info('kk7 direkt blockiert – Kacheln laufen jetzt über wsrv.nl');
 }
+/* Gesperrte Clients bekommen von kk7 eine Totenkopf-Kachel mit HTTP 200.
+   Erkennung: zwei verschiedene Koordinaten liefern byte-identische Bilder. */
+async function kk7Healthy(urlA, urlB, ms){
+  const get=async u=>{
+    const r=await fetch(u,{cache:'no-store',signal:AbortSignal.timeout(ms)});
+    if(!r.ok) throw 0;
+    return r.blob();
+  };
+  const [a,b]=await Promise.all([get(urlA),get(urlB)]);
+  if(a.size!==b.size) return true;
+  const [ba,bb]=await Promise.all([a.arrayBuffer(),b.arrayBuffer()]);
+  const va=new Uint8Array(ba), vb=new Uint8Array(bb);
+  for(let i=0;i<va.length;i++) if(va[i]!==vb[i]) return true;
+  return false; // identisch = Sperrseite
+}
 async function kk7DirectOk(){
   try{
-    const r=await fetch(`https://thermal.kk7.ch/tiles/skyways_all_all/6/33/41.png?src=${encodeURIComponent(KK7_SRC)}`,{cache:'no-store',signal:AbortSignal.timeout(6000)});
-    return r.ok;
+    return await kk7Healthy(
+      `https://thermal.kk7.ch/tiles/skyways_all_all/6/33/41.png?src=${encodeURIComponent(KK7_SRC)}`,
+      `https://thermal.kk7.ch/tiles/skyways_all_all/6/34/41.png?src=${encodeURIComponent(KK7_SRC)}`, 6000);
   }catch(e){ return false; }
 }
 async function kk7TryProxy(){
   try{
-    const r=await fetch('https://wsrv.nl/?url=thermal.kk7.ch/tiles/skyways_all_all/6/33/41.png%3Fsrc%3Dlukas0276.github.io',{cache:'no-store',signal:AbortSignal.timeout(9000)});
-    if(r.ok){ enableKk7Proxy(); return true; }
+    if(await kk7Healthy(
+      'https://wsrv.nl/?url=thermal.kk7.ch/tiles/skyways_all_all/6/33/41.png%3Fsrc%3Dlukas0276.github.io',
+      'https://wsrv.nl/?url=thermal.kk7.ch/tiles/skyways_all_all/6/34/41.png%3Fsrc%3Dlukas0276.github.io', 9000)){
+      enableKk7Proxy(); return true;
+    }
   }catch(e){}
   return false;
+}
+/* kk7 komplett tot/gesperrt: Heatmap-Ebenen abschalten, damit keine
+   Totenkopf-Kacheln erscheinen; Routing läuft dann im Gelände-Modus. */
+let kk7IsDown=false;
+function setKk7Down(down){
+  if(down===kk7IsDown) return;
+  kk7IsDown=down;
+  const cbS=$('cbSky'), cbT=$('cbThermMap');
+  if(down){
+    map.removeLayer(skyLayer); map.removeLayer(thermLayer);
+    cbS.checked=false; cbT.checked=false;
+    cbS.disabled=true; cbT.disabled=true;
+    $('kk7warn').style.display='block';
+  }else{
+    cbS.disabled=false; cbT.disabled=false;
+    if(cbS.checked===false){ cbS.checked=true; skyLayer.addTo(map); }
+    $('kk7warn').style.display='none';
+  }
 }
 let kk7Fails=0, kk7Checking=false;
 const kk7Err=async ()=>{
   if(++kk7Fails<6 || kk7Checking) return;
   kk7Checking=true;
   if(await kk7DirectOk() && !kk7Proxy) kk7Fails=0;
-  else if(await kk7TryProxy()){ kk7Fails=0; $('kk7warn').style.display='none'; }
-  else $('kk7warn').style.display='block';
+  else if(await kk7TryProxy()){ kk7Fails=0; setKk7Down(false); }
+  else setKk7Down(true);
   kk7Checking=false;
 };
-const kk7Ok=()=>{ kk7Fails=0; $('kk7warn').style.display='none'; };
+const kk7Ok=()=>{ kk7Fails=0; if(!kk7IsDown) $('kk7warn').style.display='none'; };
 skyLayer.on('tileerror',kk7Err);  skyLayer.on('tileload',kk7Ok);
 thermLayer.on('tileerror',kk7Err); thermLayer.on('tileload',kk7Ok);
 /* Beim Start einmal proaktiv prüfen, damit die Heatmap sofort da ist */
-(async ()=>{ if(!await kk7DirectOk()) await kk7TryProxy(); })();
+(async ()=>{ if(!await kk7DirectOk() && !await kk7TryProxy()) setKk7Down(true); })();
 
 const sitesLayer   = L.layerGroup().addTo(map);
 const hotspotLayer = L.layerGroup().addTo(map);
@@ -603,6 +643,7 @@ async function loadGrid(layer, bounds, zoom, targetCells, onProgress){
   const cvs=document.createElement('canvas'); cvs.width=pw; cvs.height=ph;
   const ctx=cvs.getContext('2d',{willReadFrequently:true});
   let done=0, okTiles=0, failTiles=0; const total=tw*th;
+  const sig=new Map(); // Bytegröße → Häufigkeit + eine Kachelposition (Sperrseiten-Check)
   const tasks=[];
   for(let tx=x0;tx<=x1;tx++) for(let ty=y0;ty<=y1;ty++){
     const tms=n-1-ty, px=(tx-x0)*256, py=(ty-y0)*256, _tx=tx;
@@ -613,6 +654,8 @@ async function loadGrid(layer, bounds, zoom, targetCells, onProgress){
         const bm=bl?await createImageBitmap(bl):null;
         if(!bm) throw 0;
         ctx.drawImage(bm,px,py);
+        const s=sig.get(bl.size)||{count:0,px,py};
+        s.count++; sig.set(bl.size,s);
       };
       try{ await draw(kk7TileRaw(layer,z,_tx,tms)); okTiles++; }
       catch(e1){
@@ -631,6 +674,23 @@ async function loadGrid(layer, bounds, zoom, targetCells, onProgress){
   const worker=async ()=>{ while(ti<tasks.length) await tasks[ti++](); };
   await Promise.all(Array.from({length:6}, ()=>worker()));
   const img=ctx.getImageData(0,0,pw,ph).data;
+  /* Sperrseiten-Check: liefert kk7 für fast alle Koordinaten denselben
+     Dateiinhalt UND ist der weitgehend deckend (echte Skyways-Kacheln sind
+     großteils transparent), ist es die Totenkopf-Blockkachel → unbrauchbar */
+  let blocked=false;
+  if(okTiles>=6){
+    let best=null;
+    for(const s of sig.values()) if(!best||s.count>best.count) best=s;
+    if(best && best.count/okTiles>0.7){
+      let opaque=0;
+      for(let yy=0;yy<256;yy++){
+        const off=((best.py+yy)*pw+best.px)*4+3;
+        for(let xx=0;xx<256;xx++) if(img[off+xx*4]>200) opaque++;
+      }
+      if(opaque/65536>0.85) blocked=true;
+    }
+  }
+  if(blocked){ failTiles+=okTiles; okTiles=0; }
   const F=Math.max(1, Math.ceil(Math.sqrt((pw*ph)/targetCells)));
   const W=Math.ceil(pw/F), H=Math.ceil(ph/F);
   const grid=new Float32Array(W*H);
@@ -646,7 +706,91 @@ async function loadGrid(layer, bounds, zoom, targetCells, onProgress){
       if(v>grid[gi]) grid[gi]=v;  // Max-Pooling erhält dünne Linien
     }
   }
-  return {grid, W, H, F, z, originX:x0*256, originY:y0*256, okTiles, failTiles};
+  return {grid, W, H, F, z, originX:x0*256, originY:y0*256, okTiles, failTiles, blocked};
+}
+
+/* ---------- Gelände-Fallback (wenn kk7 ausfällt) ----------
+   Quelle: AWS Terrain Tiles (Mapzen-Terrarium, offen, CORS frei, kein Key).
+   Höhe je Pixel: h = R*256 + G + B/256 − 32768.
+   Intensität = relative Höhe im lokalen Umfeld (~4 km): Grate & Hangkanten
+   nahe 1, Talböden nahe 0 – in den Alpen folgen Flugkorridore fast immer
+   den Graten, daher funktioniert derselbe A* darauf brauchbar weiter. */
+async function loadTerrainGrid(bounds, zoom, targetCells, onProgress){
+  const z=Math.min(zoom,12), n=Math.pow(2,z);
+  let x0=Math.floor(lon2gx(bounds.getWest(),z)/256), x1=Math.floor(lon2gx(bounds.getEast(),z)/256);
+  let y0=Math.floor(lat2gy(bounds.getNorth(),z)/256), y1=Math.floor(lat2gy(bounds.getSouth(),z)/256);
+  x0=Math.max(0,x0); y0=Math.max(0,y0); x1=Math.min(n-1,x1); y1=Math.min(n-1,y1);
+  const tw=x1-x0+1, th=y1-y0+1, pw=tw*256, ph=th*256;
+  const cvs=document.createElement('canvas'); cvs.width=pw; cvs.height=ph;
+  const ctx=cvs.getContext('2d',{willReadFrequently:true});
+  let done=0, okTiles=0, failTiles=0; const total=tw*th;
+  const tasks=[];
+  for(let tx=x0;tx<=x1;tx++) for(let ty=y0;ty<=y1;ty++){
+    const px=(tx-x0)*256, py=(ty-y0)*256, _tx=tx, _ty=ty; // XYZ, kein TMS
+    tasks.push(async ()=>{
+      const draw=async ()=>{
+        const r=await fetch(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${_tx}/${_ty}.png`);
+        const bl=r.ok?await r.blob():null;
+        const bm=bl?await createImageBitmap(bl):null;
+        if(!bm) throw 0;
+        ctx.drawImage(bm,px,py);
+      };
+      try{ await draw(); okTiles++; }
+      catch(e1){
+        await new Promise(r=>setTimeout(r,400));
+        try{ await draw(); okTiles++; } catch(e2){ failTiles++; }
+      }
+      done++; if(onProgress&&done%6===0) onProgress(done/total);
+    });
+  }
+  let ti=0;
+  const worker=async ()=>{ while(ti<tasks.length) await tasks[ti++](); };
+  await Promise.all(Array.from({length:6}, ()=>worker()));
+  const img=ctx.getImageData(0,0,pw,ph).data;
+  const F=Math.max(1, Math.ceil(Math.sqrt((pw*ph)/targetCells)));
+  const W=Math.ceil(pw/F), H=Math.ceil(ph/F);
+  /* Höhe je Zelle (Mittelwert); transparente Pixel = fehlgeschlagene
+     Kachel = No-Data (sonst würden −32768-Löcher die Skala zerstören) */
+  const NODATA=-9999;
+  const elev=new Float32Array(W*H), cnt=new Uint16Array(W*H);
+  for(let py=0;py<ph;py++){
+    const gy=(py/F)|0, rowOff=py*pw;
+    for(let px=0;px<pw;px++){
+      const o=(rowOff+px)*4;
+      if(img[o+3]<200) continue;
+      const gi=gy*W+((px/F)|0);
+      elev[gi]+=img[o]*256+img[o+1]+img[o+2]/256-32768;
+      cnt[gi]++;
+    }
+  }
+  for(let i=0;i<W*H;i++) elev[i]=cnt[i]?elev[i]/cnt[i]:NODATA;
+  /* Relative Höhe im gleitenden Fenster (~4 km), getrennt je Achse.
+     Bei großen Fenstern nur jede 2. Zelle abtasten – reicht für min/max. */
+  const mPerCell=156543.03*Math.cos(bounds.getCenter().lat*Math.PI/180)/Math.pow(2,z)*F;
+  const win=Math.max(3, Math.round(4000/mPerCell)), st=win>12?2:1;
+  const mnH=new Float32Array(W*H), mxH=new Float32Array(W*H);
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    let mn=Infinity, mx=-Infinity;
+    for(let i=Math.max(0,x-win);i<=Math.min(W-1,x+win);i+=st){
+      const v=elev[y*W+i]; if(v<=NODATA) continue;
+      if(v<mn) mn=v; if(v>mx) mx=v;
+    }
+    mnH[y*W+x]=mn; mxH[y*W+x]=mx;
+  }
+  const grid=new Float32Array(W*H);
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    let mn=Infinity, mx=-Infinity;
+    for(let j=Math.max(0,y-win);j<=Math.min(H-1,y+win);j+=st){
+      if(mnH[j*W+x]<mn) mn=mnH[j*W+x];
+      if(mxH[j*W+x]>mx) mx=mxH[j*W+x];
+    }
+    const h=elev[y*W+x];
+    if(h<=NODATA || !isFinite(mn) || !isFinite(mx)){ grid[y*W+x]=0; continue; }
+    /* 500 m Mindestrelief, sonst „erfindet" Flachland Korridore */
+    const v=Math.max(0, Math.min(1, (h-mn)/Math.max(500, mx-mn)));
+    grid[y*W+x]=Math.pow(v,1.2);
+  }
+  return {grid, elev, W, H, F, z, originX:x0*256, originY:y0*256, okTiles, failTiles, terrain:true};
 }
 const g2ll=(G,gx,gy)=>({lat:gy2lat(G.originY+(gy+0.5)*G.F, G.z), lon:gx2lon(G.originX+(gx+0.5)*G.F, G.z)});
 const ll2g=(G,lat,lon)=>({x:Math.round((lon2gx(lon,G.z)-G.originX)/G.F), y:Math.round((lat2gy(lat,G.z)-G.originY)/G.F)});
@@ -681,7 +825,9 @@ function astar(G, s, e){
   const SQ2=Math.SQRT2;
   const dx=[1,-1,0,0,1,1,-1,-1], dy=[0,0,1,-1,1,-1,1,-1], dl=[1,1,1,1,SQ2,SQ2,SQ2,SQ2];
   const ex=e.x, ey=e.y;
-  const K=14, HW=1.12; // Kostenfaktor abseits der Korridore, Heuristik-Gewicht
+  /* Kostenfaktor abseits der Korridore; im Gelände-Modus schwächer,
+     weil relative Höhe keine erwiesenen Flugrouten sind → weniger Umweg */
+  const K=G.terrain?7:14, HW=1.12;
   const heur=(x,y)=>Math.hypot(x-ex,y-ey)*HW;
   gScore[sN]=0; push(sN, heur(s.x,s.y));
   let guard=0, maxIter=W*H*3;
@@ -780,14 +926,24 @@ async function computeRoute(){
     while(z>8 && tileCount(z)>150) z--;
 
     let G=await loadGrid('skyways_all_all', bounds, z, 1.6e6, p=>setStatus(`<span class="spinner"></span>Lade Flugkorridore … ${Math.round(p*100)} %`));
-    if(G.okTiles===0 && !kk7Proxy && await kk7TryProxy()){
+    /* Qualitäts-Gate: fehlen zu viele Kacheln (z. B. wsrv liefert nur noch
+       CDN-Cache-Treffer), ist das Raster löchrig → lieber Gelände-Modus
+       als eine Route aus Datenfragmenten */
+    const tooHoley=g=>g.okTiles===0 || g.failTiles>(g.okTiles+g.failTiles)*0.4;
+    if(tooHoley(G) && !kk7Proxy && await kk7TryProxy()){
       G=await loadGrid('skyways_all_all', bounds, z, 1.6e6, p=>setStatus(`<span class="spinner"></span>Direktweg blockiert – lade über Ersatzweg … ${Math.round(p*100)} %`));
     }
-    if(G.okTiles===0){
-      $('kk7warn').style.display='block';
-      setStatus('⚠️ thermal.kk7.ch ist gerade nicht erreichbar (auch über den Ersatzweg) – ein paar Minuten warten und nochmal versuchen.');
-      state.routing=false; $('routeBtn').disabled=false;
-      return;
+    let terrainMode=false;
+    if(tooHoley(G)){
+      /* kk7 tot oder gesperrt → Gelände-Analyse als Ersatzquelle */
+      setKk7Down(true);
+      G=await loadTerrainGrid(bounds, z, 1.6e6, p=>setStatus(`<span class="spinner"></span>kk7 offline – lade Gelände-Höhendaten … ${Math.round(p*100)} %`));
+      terrainMode=true;
+      if(G.okTiles===0){
+        setStatus('⚠️ Weder thermal.kk7.ch noch die Gelände-Höhendaten sind erreichbar – bitte später nochmal versuchen.');
+        state.routing=false; $('routeBtn').disabled=false;
+        return;
+      }
     }
     setStatus('<span class="spinner"></span>Berechne beste Route …');
     await new Promise(r=>setTimeout(r,30)); // UI atmen lassen
@@ -820,15 +976,18 @@ async function computeRoute(){
     $('stLuft').innerHTML=`${distKm.toFixed(1)} <small>km</small>`;
     $('stUmweg').innerHTML=`+${Math.max(0,Math.round((routeKm/distKm-1)*100))} <small>%</small>`;
     $('stZeit').textContent=fmtTime(routeKm/22);
-    $('covPct').textContent=coverage+' %';
-    $('covFill').style.width=coverage+'%';
+    /* Im Gelände-Modus gibt es keine Korridor-Abdeckung */
+    $('covPct').textContent=terrainMode?'–':coverage+' %';
+    $('covFill').style.width=(terrainMode?0:coverage)+'%';
     $('statsCard').style.display='block';
     map.fitBounds(L.latLngBounds(latlngs).pad(0.12));
 
-    /* Thermik-Hotspots an der Route */
+    /* Thermik-Hotspots an der Route (Gelände-Modus: Grate & Kuppen) */
     setStatus('<span class="spinner"></span>Suche Thermik-Hotspots …');
-    await findHotspots(bounds, Math.min(z,11), latlngs);
-    setStatus(coverage>=60
+    await findHotspots(bounds, Math.min(z,11), latlngs, terrainMode?G:null);
+    setStatus(terrainMode
+      ? '⛰️ thermal.kk7.ch ist offline – Route wurde ersatzweise entlang von Graten & Hangkanten berechnet (Gelände-Analyse, ohne echte Flugdaten). Später neu versuchen für die Korridor-Route.'
+      : coverage>=60
       ? `✅ Route folgt zu ${coverage} % bekannten Flugkorridoren.`
       : `⚠️ Nur ${coverage} % der Route liegen auf bekannten Korridoren – Strecke ist wenig geflogen.`);
   }catch(err){
@@ -840,9 +999,9 @@ async function computeRoute(){
 }
 $('routeBtn').onclick=computeRoute;
 
-async function findHotspots(bounds, z, latlngs){
+async function findHotspots(bounds, z, latlngs, terrainG){
   hotspotLayer.clearLayers();
-  const G=await loadGrid('thermals_all_all', bounds, z, 0.7e6);
+  const G=terrainG || await loadGrid('thermals_all_all', bounds, z, 0.7e6);
   if(G.okTiles===0) return;
   /* Route in Grid-Koordinaten abtasten */
   const samples=[];
@@ -850,18 +1009,20 @@ async function findHotspots(bounds, z, latlngs){
   const mPerCell=156543.03*Math.cos(bounds.getCenter().lat*Math.PI/180)/Math.pow(2,G.z)*G.F;
   const corridorCells=2600/mPerCell;       // ±2,6 km um die Route
   const nmsCells=1400/mPerCell;            // Mindestabstand zwischen Hotspots
-  /* lokale Maxima */
+  /* lokale Maxima – im Gelände-Modus über der Höhe (Gipfel/Kuppen),
+     sonst über dem Thermik-Heatmap-Wert */
   const cand=[];
   const {grid,W,H}=G;
+  const field=terrainG?G.elev:grid;
   for(let y=2;y<H-2;y++) for(let x=2;x<W-2;x++){
-    const v=grid[y*W+x];
-    if(v<0.32) continue;
+    const v=field[y*W+x];
+    if(terrainG ? grid[y*W+x]<0.6 : v<0.32) continue;
     let isMax=true;
     for(let j=-2;j<=2&&isMax;j++) for(let i=-2;i<=2;i++){
       if(i===0&&j===0) continue;
-      if(grid[(y+j)*W+(x+i)]>v){ isMax=false; break; }
+      if(field[(y+j)*W+(x+i)]>v){ isMax=false; break; }
     }
-    if(isMax) cand.push({x,y,v});
+    if(isMax) cand.push({x,y,v:grid[y*W+x]});
   }
   cand.sort((a,b)=>b.v-a.v);
   const picked=[];
@@ -876,8 +1037,10 @@ async function findHotspots(bounds, z, latlngs){
   for(const c of picked){
     const q=g2ll(G,c.x,c.y);
     const size=20+Math.round(c.v*10);
-    L.marker([q.lat,q.lon],{icon:L.divIcon({className:'', html:`<div class="hotspot">${THERM_SVG}</div>`, iconSize:[size,size], iconAnchor:[size/2,size/2]}), interactive:true, zIndexOffset:400})
-      .bindTooltip(`Thermik-Hotspot · Stärke ${Math.round(c.v*100)} %`)
+    L.marker([q.lat,q.lon],{icon:L.divIcon({className:'', html:`<div class="hotspot${terrainG?' terra':''}">${THERM_SVG}</div>`, iconSize:[size,size], iconAnchor:[size/2,size/2]}), interactive:true, zIndexOffset:400})
+      .bindTooltip(terrainG
+        ? `Möglicher Thermik-Auslöser · Grat/Kuppe, ${Math.round(G.elev[c.y*G.W+c.x])} m (Gelände-Analyse)`
+        : `Thermik-Hotspot · Stärke ${Math.round(c.v*100)} %`)
       .addTo(hotspotLayer);
   }
 }
